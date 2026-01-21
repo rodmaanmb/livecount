@@ -9,9 +9,20 @@ import SwiftUI
 
 @main
 struct LIVECOUNTApp: App {
+
+    init() {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "runSelfTests") {
+            MetricsCalculatorSelfTests.runAll()
+        }
+        #endif
+
+    }
+
     var body: some Scene {
         WindowGroup {
             DashboardView()
         }
     }
 }
+

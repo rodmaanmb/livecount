@@ -8,6 +8,6 @@
 import Foundation
 
 enum EntryType: String, Codable {
-    case entry
-    case exit
+    case `in`
+    case out
 }

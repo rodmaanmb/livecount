@@ -9,5 +9,5 @@ import Foundation
 
 enum UserRole: String, Codable {
     case admin
-    case user
+    case viewer
 }
