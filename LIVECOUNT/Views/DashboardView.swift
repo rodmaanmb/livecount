@@ -13,6 +13,9 @@ struct DashboardView: View {
     @State private var showTools: Bool = false
     @State private var selectedHour: Date?
     
+    // P0.3-A: Chart display mode persistence
+    @AppStorage("chartDisplayMode") private var chartDisplayMode: ChartDisplayMode = .combined
+    
     // History view model for historical KPIs (range != .today)
     @State private var historyViewModel: HistoryViewModel
     
@@ -35,6 +38,20 @@ struct DashboardView: View {
                 VStack(spacing: 0) {
                     headerSection
                     
+                    // P0.1.1: Hard issues banner (red alert)
+                    if viewModel.hasHardIntegrityIssues && viewModel.selectedPeriod == .today {
+                        hardIntegrityBanner
+                            .padding(.horizontal, Nexus.Spacing.lg)
+                            .padding(.top, Nexus.Spacing.md)
+                    }
+                    
+                    // P0.1.1: Soft signals section (neutral info)
+                    if viewModel.hasSoftSignals && viewModel.selectedPeriod == .today {
+                        softSignalsSection
+                            .padding(.horizontal, Nexus.Spacing.lg)
+                            .padding(.top, Nexus.Spacing.sm)
+                    }
+                    
                     contentForSelectedRange
                         .padding(.horizontal, Nexus.Spacing.lg)
                         .padding(.top, Nexus.Spacing.lg)
@@ -50,8 +67,13 @@ struct DashboardView: View {
             }
             .onChange(of: viewModel.selectedPeriod) { _, newPeriod in
                 triggerHapticFeedback(.light)
+                
+                // P0.2: Reset offset when changing period
+                viewModel.rangeOffsetDays = 0
+                
                 if newPeriod != .today {
                     historyViewModel.selectedRangeType = newPeriod
+                    historyViewModel.rangeOffsetDays = 0  // P0.2: Also reset history VM offset
                     historyViewModel.loadMetrics()
                 }
             }
@@ -81,7 +103,7 @@ struct DashboardView: View {
                 
                 Spacer()
                 
-                if viewModel.selectedPeriod == .today {
+                if viewModel.selectedPeriod == .today && viewModel.rangeOffsetDays == 0 {
                     liveStatusChip
                 }
             }
@@ -92,11 +114,65 @@ struct DashboardView: View {
                 }
             }
             .pickerStyle(.segmented)
+            
+            // P0.2: Time navigation buttons
+            navigationButtons
         }
         .padding(.horizontal, Nexus.Spacing.lg)
         .padding(.vertical, Nexus.Spacing.md)
         .background(Nexus.Colors.background)
         .nexusDivider()
+    }
+    
+    // P0.2: Navigation buttons component
+    private var navigationButtons: some View {
+        HStack {
+            Button {
+                shiftCurrentRange(by: -1)
+            } label: {
+                Label("Précédent", systemImage: "chevron.left")
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(Nexus.Colors.textSecondary)
+            }
+            
+            Spacer()
+            
+            Button {
+                shiftCurrentRange(by: 1)
+            } label: {
+                Label("Suivant", systemImage: "chevron.right")
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(Nexus.Colors.textSecondary)
+            }
+            .disabled(!canNavigateForward)
+            .opacity(canNavigateForward ? 1 : 0.4)
+        }
+        .padding(.horizontal, Nexus.Spacing.sm)
+    }
+    
+    // P0.2: Navigation helpers
+    
+    private var canNavigateForward: Bool {
+        if viewModel.selectedPeriod == .today {
+            return viewModel.canShiftForward
+        } else {
+            return historyViewModel.canShiftForward
+        }
+    }
+    
+    private func shiftCurrentRange(by step: Int) {
+        triggerHapticFeedback(.light)
+        
+        if viewModel.selectedPeriod == .today {
+            viewModel.shiftRange(by: step)
+            historyViewModel.selectedRangeType = .today
+            historyViewModel.rangeOffsetDays = viewModel.rangeOffsetDays
+            historyViewModel.loadMetrics()
+        } else {
+            historyViewModel.shiftRange(by: step)
+        }
     }
     
     private var liveStatusChip: some View {
@@ -107,14 +183,67 @@ struct DashboardView: View {
         )
     }
     
+    // MARK: - Data Integrity UI (P0.1.1: Hard Issues vs Soft Signals)
+    
+    /// P0.1.1: Red alert banner for HARD integrity issues (people_present < 0)
+    @ViewBuilder
+    private var hardIntegrityBanner: some View {
+        VStack(alignment: .leading, spacing: Nexus.Spacing.xs) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Nexus.Colors.negative)  // P0.1.1: Rouge critique
+                Text("Incohérence détectée")
+                    .font(Nexus.Typography.bodyEmphasis)
+                    .foregroundColor(Nexus.Colors.textPrimary)
+            }
+            
+            ForEach(viewModel.dataIntegrityIssues.filter { $0.severity == .critical }) { issue in
+                Text("• \(issue.message)")
+                    .font(Nexus.Typography.caption)
+                    .foregroundColor(Nexus.Colors.textSecondary)
+            }
+        }
+        .padding(Nexus.Spacing.md)
+        .background(Nexus.Colors.negative.opacity(0.15))  // P0.1.1: Fond rouge clair
+        .clipShape(RoundedRectangle(cornerRadius: Nexus.Radius.md))
+        .overlay(
+            RoundedRectangle(cornerRadius: Nexus.Radius.md)
+                .strokeBorder(Nexus.Colors.negative, lineWidth: 2)  // P0.1.1: Bordure rouge épaisse
+        )
+    }
+    
+    /// P0.1.1: Neutral info section for SOFT flow signals (negative drain, inactivity)
+    @ViewBuilder
+    private var softSignalsSection: some View {
+        VStack(alignment: .leading, spacing: Nexus.Spacing.xs) {
+            HStack {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(Nexus.Colors.textSecondary)  // P0.1.1: Neutre
+                Text("Activité")
+                    .font(Nexus.Typography.caption)
+                    .foregroundColor(Nexus.Colors.textSecondary)
+            }
+            
+            ForEach(viewModel.dataFlowSignals) { signal in
+                Text("• \(signal.message)")
+                    .font(Nexus.Typography.micro)
+                    .foregroundColor(Nexus.Colors.textTertiary)
+            }
+        }
+        .padding(Nexus.Spacing.sm)
+        .background(Nexus.Colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Nexus.Radius.sm))
+    }
+    
     // MARK: - Content Routing
     
     @ViewBuilder
     private var contentForSelectedRange: some View {
-        switch viewModel.selectedPeriod {
-        case .today:
+        if viewModel.selectedPeriod == .today && viewModel.rangeOffsetDays == 0 {
             liveContent
-        case .last7Days, .last30Days, .year:
+        } else {
             HistoryMetricsContent(viewModel: historyViewModel)
         }
     }
@@ -278,6 +407,19 @@ struct DashboardView: View {
                         .foregroundColor(Nexus.Colors.textTertiary)
                 }
                 
+                // P0.3-A: Chart display mode toggle
+                Picker("Mode d'affichage", selection: $chartDisplayMode) {
+                    ForEach(ChartDisplayMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: chartDisplayMode) { _, _ in
+                    // Reset selection when changing mode
+                    selectedHour = nil
+                    triggerHapticFeedback(.light)
+                }
+                
                 chartLegend
                 
                 if viewModel.isTodayChartLoading {
@@ -288,7 +430,25 @@ struct DashboardView: View {
                     combinedChart
                 }
                 
-                if let hint = viewModel.todayCoverageHint {
+                // P0.1: Enhanced coverage display
+                if let coverage = viewModel.coverageWindow {
+                    VStack(alignment: .leading, spacing: Nexus.Spacing.xxs) {
+                        Text(coverage.detailedDescription)
+                            .font(Nexus.Typography.micro)
+                            .foregroundColor(Nexus.Colors.textTertiary)
+                        
+                        if coverage.hasGaps {
+                            HStack(spacing: Nexus.Spacing.xxs) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Nexus.Colors.warning)
+                                Text("Des trous ont été détectés dans le flux")
+                                    .font(Nexus.Typography.micro)
+                                    .foregroundColor(Nexus.Colors.warning)
+                            }
+                        }
+                    }
+                } else if let hint = viewModel.todayCoverageHint {
                     Text(hint)
                         .font(Nexus.Typography.micro)
                         .foregroundColor(Nexus.Colors.textTertiary)
@@ -304,18 +464,23 @@ struct DashboardView: View {
         }
     }
     
+    // P0.3-A: Adaptive legend based on display mode
     private var chartLegend: some View {
         HStack(spacing: Nexus.Spacing.lg) {
-            legendItem(
-                color: Nexus.Colors.accent,
-                label: "Entrées / heure",
-                isLine: false
-            )
-            legendItem(
-                color: Nexus.Colors.positive.opacity(0.8),
-                label: "Cumul journée",
-                isLine: true
-            )
+            if chartDisplayMode == .bars || chartDisplayMode == .combined {
+                legendItem(
+                    color: Nexus.Colors.accent,
+                    label: "Entrées / heure",
+                    isLine: false
+                )
+            }
+            if chartDisplayMode == .cumulative || chartDisplayMode == .combined {
+                legendItem(
+                    color: Nexus.Colors.positive.opacity(0.8),
+                    label: "Cumul journée",
+                    isLine: true
+                )
+            }
         }
     }
     
@@ -356,17 +521,124 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, minHeight: 220)
     }
     
-    /// Chart combiné Today: Barres (axe Y gauche) + Ligne cumul (axe Y droit)
-    /// Règles:
-    /// - Barres = métrique primaire (entrées/heure)
-    /// - Ligne = métrique secondaire (cumul progressif, monotone croissante)
-    /// - Domaines Y indépendants pour éviter l'écrasement visuel
+    /// P0.3-A: Chart with conditional display based on chartDisplayMode
+    /// - `.bars`: Barres uniquement (axe Y gauche)
+    /// - `.cumulative`: Ligne cumul uniquement (axe Y gauche)
+    /// - `.combined`: Barres (axe Y gauche) + Ligne cumul (axe Y droit)
     private var combinedChart: some View {
+        Group {
+            switch chartDisplayMode {
+            case .bars:
+                barsOnlyChart
+            case .cumulative:
+                cumulativeOnlyChart
+            case .combined:
+                combinedBarsAndLineChart
+            }
+        }
+        .frame(height: 240)
+    }
+    
+    /// P0.3-A: Bars only mode
+    private var barsOnlyChart: some View {
+        Chart(viewModel.todayChartBuckets) { bucket in
+            BarMark(
+                x: .value("Heure", bucket.date, unit: .hour),
+                y: .value("Entrées", bucket.entries),
+                width: .fixed(16)
+            )
+            .foregroundStyle(Nexus.Colors.accent)
+            
+            if let selected = selectedBucket {
+                RuleMark(x: .value("Sélection", selected.date))
+                    .foregroundStyle(Nexus.Colors.border)
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
+                    .annotation(position: .top, alignment: .leading) {
+                        chartTooltip(for: selected)
+                    }
+            }
+        }
+        .chartXScale(domain: chartXDomain)
+        .chartYScale(domain: normalizedBarsDomain)
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .hour, count: hourLabelStride)) { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                    .foregroundStyle(Nexus.Colors.borderSubtle)
+                AxisTick()
+                AxisValueLabel(format: .dateTime.hour(.twoDigits(amPM: .omitted)))
+                    .foregroundStyle(Nexus.Colors.textTertiary)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                    .foregroundStyle(Nexus.Colors.borderSubtle)
+                AxisTick()
+                AxisValueLabel()
+                    .foregroundStyle(Nexus.Colors.textSecondary)
+            }
+        }
+        .chartXSelection(value: $selectedHour)
+    }
+    
+    /// P0.3-A: Cumulative line only mode
+    private var cumulativeOnlyChart: some View {
+        Chart(viewModel.todayChartBuckets) { bucket in
+            let cumulValue = max(0, bucket.cumulative)
+            
+            LineMark(
+                x: .value("Heure", bucket.date, unit: .hour),
+                y: .value("Cumul", cumulValue)
+            )
+            .interpolationMethod(.monotone)
+            .foregroundStyle(Nexus.Colors.positive.opacity(0.8))
+            .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            
+            PointMark(
+                x: .value("Heure", bucket.date, unit: .hour),
+                y: .value("Cumul", cumulValue)
+            )
+            .foregroundStyle(Nexus.Colors.positive)
+            .symbolSize(16)
+            
+            if let selected = selectedBucket {
+                RuleMark(x: .value("Sélection", selected.date))
+                    .foregroundStyle(Nexus.Colors.border)
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
+                    .annotation(position: .top, alignment: .leading) {
+                        chartTooltip(for: selected)
+                    }
+            }
+        }
+        .chartXScale(domain: chartXDomain)
+        .chartYScale(domain: normalizedCumulativeDomain)
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .hour, count: hourLabelStride)) { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                    .foregroundStyle(Nexus.Colors.borderSubtle)
+                AxisTick()
+                AxisValueLabel(format: .dateTime.hour(.twoDigits(amPM: .omitted)))
+                    .foregroundStyle(Nexus.Colors.textTertiary)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                    .foregroundStyle(Nexus.Colors.borderSubtle)
+                AxisTick()
+                AxisValueLabel()
+                    .foregroundStyle(Nexus.Colors.positive.opacity(0.8))
+            }
+        }
+        .chartXSelection(value: $selectedHour)
+    }
+    
+    /// P0.3-A: Combined mode (original behavior)
+    private var combinedBarsAndLineChart: some View {
         ZStack {
             todayBarChart
             todayCumulativeLineChart
         }
-        .frame(height: 240)
     }
     
     /// Barres d'entrées/heure avec axe Y à gauche (position: .leading)
@@ -389,7 +661,7 @@ struct DashboardView: View {
             }
         }
         .chartXScale(domain: chartXDomain)
-        .chartYScale(domain: 0...Double(max(1, maxEntries)))
+        .chartYScale(domain: normalizedBarsDomain)
         .chartXAxis {
             AxisMarks(values: .stride(by: .hour, count: hourLabelStride)) { _ in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
@@ -436,7 +708,7 @@ struct DashboardView: View {
             .symbolSize(16)
         }
         .chartXScale(domain: chartXDomain)
-        .chartYScale(domain: 0...Double(max(1, maxCumulative)))
+        .chartYScale(domain: normalizedCumulativeDomain)
         .chartXAxis(.hidden) // X axis déjà affiché par le chart des barres
         .chartYAxis {
             // Axe Y droit pour le cumul (métrique secondaire)
@@ -449,27 +721,40 @@ struct DashboardView: View {
         }
     }
     
+    // P0.3-A: Enhanced tooltip with delta vs previous hour
     private func chartTooltip(for bucket: DashboardViewModel.HourlyEntryBucket) -> some View {
         VStack(alignment: .leading, spacing: Nexus.Spacing.xxs) {
             Text(hourLabel(for: bucket.date))
                 .font(Nexus.Typography.caption)
                 .foregroundColor(Nexus.Colors.textSecondary)
             
-            HStack {
-                Text("Entrées")
-                Spacer()
-                Text(formatNumber(bucket.entries))
+            // Show based on display mode
+            if chartDisplayMode == .bars || chartDisplayMode == .combined {
+                HStack {
+                    Text("Entrées")
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(formatNumber(bucket.entries))
+                        if let delta = previousHourDelta(for: bucket) {
+                            Text(delta.formatted)
+                                .font(Nexus.Typography.micro)
+                                .foregroundColor(delta.color)
+                        }
+                    }
+                }
+                .font(Nexus.Typography.caption)
+                .foregroundColor(Nexus.Colors.textPrimary)
             }
-            .font(Nexus.Typography.caption)
-            .foregroundColor(Nexus.Colors.textPrimary)
             
-            HStack {
-                Text("Cumul")
-                Spacer()
-                Text(formatNumber(bucket.cumulative))
+            if chartDisplayMode == .cumulative || chartDisplayMode == .combined {
+                HStack {
+                    Text("Cumul")
+                    Spacer()
+                    Text(formatNumber(bucket.cumulative))
+                }
+                .font(Nexus.Typography.caption)
+                .foregroundColor(Nexus.Colors.textPrimary)
             }
-            .font(Nexus.Typography.caption)
-            .foregroundColor(Nexus.Colors.textPrimary)
         }
         .padding(Nexus.Spacing.sm)
         .background(Nexus.Colors.surfaceElevated)
@@ -479,6 +764,25 @@ struct DashboardView: View {
                 .strokeBorder(Nexus.Colors.borderSubtle, lineWidth: 1)
         )
         .applyShadow(.medium)
+    }
+    
+    // P0.3-A: Calculate delta vs previous hour
+    private func previousHourDelta(for bucket: DashboardViewModel.HourlyEntryBucket) -> (formatted: String, color: Color)? {
+        guard let index = viewModel.todayChartBuckets.firstIndex(where: { $0.id == bucket.id }),
+              index > 0 else {
+            return nil
+        }
+        
+        let previousBucket = viewModel.todayChartBuckets[index - 1]
+        let delta = bucket.entries - previousBucket.entries
+        
+        if delta == 0 {
+            return ("=", Nexus.Colors.textTertiary)
+        } else if delta > 0 {
+            return ("+\(delta)", Nexus.Colors.positive)
+        } else {
+            return ("\(delta)", Nexus.Colors.negative)
+        }
     }
     
     // Chart helpers
@@ -500,6 +804,19 @@ struct DashboardView: View {
     
     private var maxCumulative: Int {
         viewModel.todayChartBuckets.map(\.cumulative).max() ?? 0
+    }
+    
+    // P0.3-A: Normalized domains with 10% margin
+    private var normalizedBarsDomain: ClosedRange<Double> {
+        let max = Double(maxEntries)
+        let upperBound = max > 0 ? max * 1.1 : 1.0
+        return 0...upperBound
+    }
+    
+    private var normalizedCumulativeDomain: ClosedRange<Double> {
+        let max = Double(maxCumulative)
+        let upperBound = max > 0 ? max * 1.1 : 1.0
+        return 0...upperBound
     }
     
     private var hourLabelStride: Int {

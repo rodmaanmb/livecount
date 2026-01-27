@@ -107,6 +107,36 @@ final class LiveAggregator {
         let remainingSpots = max(0, maxCapacity - currentCount)
         let status = computeStatus(occupancyPercent: occupancyPercent)
         
+        // P0.1.1: Validate data integrity (hard issues) + analyze flow signals (soft)
+        let now = Date()
+        let windowStart = now.addingTimeInterval(-Double(windowDurationMinutes * 60))
+        let timeRange = DateInterval(start: windowStart, end: now)
+        
+        // Use longer threshold for live window (dynamic context)
+        let config = DataGapConfiguration(
+            displayThreshold: 20 * 60,
+            issueThreshold: TimeInterval(windowDurationMinutes * 60),
+            inactivityThreshold: 6 * 60 * 60
+        )
+        
+        // P0.1.1: HARD issues only (people_present < 0)
+        let hardIssues = DataIntegrityValidator.validate(
+            entries: recentEvents,
+            timeRange: timeRange
+        )
+        
+        // P0.1.1: SOFT signals (negative drain, inactivity)
+        let softSignals = DataIntegrityValidator.analyzeFlowSignals(
+            entries: recentEvents,
+            timeRange: timeRange,
+            config: config
+        )
+        
+        let coverage = DataIntegrityValidator.computeCoverageWindow(
+            entries: recentEvents,
+            config: config
+        )
+        
         return CounterState(
             currentCount: currentCount,
             lastUpdated: Date(),
@@ -116,7 +146,10 @@ final class LiveAggregator {
             remainingSpots: remainingSpots,
             entriesLastXMin: entriesLastXMin,
             exitsLastXMin: exitsLastXMin,
-            netLastXMin: netLastXMin
+            netLastXMin: netLastXMin,
+            dataIntegrityIssues: hardIssues,
+            dataFlowSignals: softSignals,
+            coverageWindow: coverage
         )
     }
     

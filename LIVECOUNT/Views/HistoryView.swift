@@ -82,7 +82,10 @@ struct HistoryView: View {
 /// Used by both HistoryView and DashboardView
 struct HistoryMetricsContent: View {
     @Bindable var viewModel: HistoryViewModel
-    @State private var entryScrollPosition: Double?
+    @State private var entryScrollPosition: Double = 0
+    
+    // P0.3-A': Chart display mode for Entrées chart (reusing same enum as Dashboard)
+    @AppStorage("historyChartDisplayMode") private var chartDisplayMode: ChartDisplayMode = .combined
     
     private var visibleSpan: Double {
         switch viewModel.selectedRangeType {
@@ -108,7 +111,7 @@ struct HistoryMetricsContent: View {
     
     private func resetEntryScrollPositionIfNeeded() {
         guard allowsHorizontalScroll else {
-            entryScrollPosition = nil
+            entryScrollPosition = 0
             return
         }
         if let last = viewModel.entryBuckets.last?.order {
@@ -292,27 +295,50 @@ struct HistoryMetricsContent: View {
         }
     }
     
-    /// Chart combiné: Barres d'entrées (axe Y gauche) + Ligne cumul (axe Y droit)
+    /// P0.3-A': Chart combiné avec toggle mode (Barres / Cumul / Combiné)
     /// Les barres sont la métrique primaire, la ligne est secondaire pour la tendance
     private var entriesWithCumulChart: some View {
-        chartCard(
-            title: "Entrées",
-            subtitle: "Barres = journalier • Ligne = cumul",
-            content: {
-                if viewModel.entryBuckets.isEmpty {
-                    emptyChartPlaceholder
-                } else {
-                    dualAxisEntriesChart
+        VStack(spacing: Nexus.Spacing.sm) {
+            chartCard(
+                title: "Entrées",
+                subtitle: chartDisplayModeSubtitle,
+                content: {
+                    VStack(spacing: Nexus.Spacing.md) {
+                        // P0.3-A': Chart display mode toggle
+                        Picker("Mode d'affichage", selection: $chartDisplayMode) {
+                            ForEach(ChartDisplayMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        
+                        if viewModel.entryBuckets.isEmpty {
+                            emptyChartPlaceholder
+                        } else {
+                            dualAxisEntriesChart
+                        }
+                    }
                 }
-            }
-        )
+            )
+        }
     }
     
-    /// Implémentation du dual-axis chart avec ZStack
-    /// Règles:
-    /// - Axe Y gauche: barres journalières (0 → maxEntryDaily)
-    /// - Axe Y droit: cumul progressif (0 → maxEntryCumulative)
-    /// - Les deux domaines sont indépendants
+    // P0.3-A': Dynamic subtitle based on display mode
+    private var chartDisplayModeSubtitle: String {
+        switch chartDisplayMode {
+        case .bars:
+            return "Barres journalières (Actuel vs Précédent)"
+        case .cumulative:
+            return "Cumul progressif"
+        case .combined:
+            return "Barres = journalier • Ligne = cumul"
+        }
+    }
+    
+    /// P0.3-A': Chart with conditional display based on chartDisplayMode
+    /// - `.bars`: Barres uniquement (Actuel/Précédent)
+    /// - `.cumulative`: Ligne cumul uniquement
+    /// - `.combined`: Barres + Ligne (dual Y-axis, comportement original)
     private var dualAxisEntriesChart: some View {
         let domain = entryXDomain ?? {
             let first = Double(viewModel.entryBuckets.first?.order ?? 0)
@@ -324,17 +350,34 @@ struct HistoryMetricsContent: View {
         let yDomainBars = 0.0...Double(max(1, maxEntryDaily))
         let yDomainCumul = 0.0...Double(max(1, maxEntryCumulative))
         
-        return ZStack {
-            // Layer 1: Barres journalières (métrique primaire, axe Y gauche)
-            barChartLayer(domain: domain, yDomain: yDomainBars)
-            
-            // Layer 2: Ligne de cumul (métrique secondaire, axe Y droit)
-            cumulativeLineLayer(domain: domain, yDomain: yDomainCumul)
+        return Group {
+            switch chartDisplayMode {
+            case .bars:
+                // Barres seules (axe Y gauche uniquement)
+                barChartLayer(domain: domain, yDomain: yDomainBars)
+                    .onChange(of: viewModel.entryBuckets) { _, _ in
+                        resetEntryScrollPositionIfNeeded()
+                    }
+                
+            case .cumulative:
+                // Ligne de cumul seule (axe Y gauche uniquement)
+                cumulativeLineLayerSolo(domain: domain, yDomain: yDomainCumul)
+                    .onChange(of: viewModel.entryBuckets) { _, _ in
+                        resetEntryScrollPositionIfNeeded()
+                    }
+                
+            case .combined:
+                // Dual-axis: barres (gauche) + cumul (droite) - comportement original
+                ZStack {
+                    barChartLayer(domain: domain, yDomain: yDomainBars)
+                    cumulativeLineLayer(domain: domain, yDomain: yDomainCumul)
+                }
+                .onChange(of: viewModel.entryBuckets) { _, _ in
+                    resetEntryScrollPositionIfNeeded()
+                }
+            }
         }
         .frame(height: 240)
-        .onChange(of: viewModel.entryBuckets) { _, _ in
-            resetEntryScrollPositionIfNeeded()
-        }
     }
     
     /// Layer des barres d'entrées avec axe Y à gauche
@@ -407,10 +450,15 @@ struct HistoryMetricsContent: View {
             seriesPrevious: Nexus.Colors.warning.opacity(0.6)
         ])
         .chartLegend(position: .top, alignment: .leading) {
+            // P0.3-A': Adaptive legend based on display mode
             HStack(spacing: Nexus.Spacing.lg) {
-                legendItem(color: Nexus.Colors.accent, label: "Actuel", isLine: false)
-                legendItem(color: Nexus.Colors.warning.opacity(0.6), label: "Précédent", isLine: false)
-                legendItem(color: Nexus.Colors.positive.opacity(0.8), label: "Cumul", isLine: true)
+                if chartDisplayMode == .bars || chartDisplayMode == .combined {
+                    legendItem(color: Nexus.Colors.accent, label: "Actuel", isLine: false)
+                    legendItem(color: Nexus.Colors.warning.opacity(0.6), label: "Précédent", isLine: false)
+                }
+                if chartDisplayMode == .cumulative || chartDisplayMode == .combined {
+                    legendItem(color: Nexus.Colors.positive.opacity(0.8), label: "Cumul", isLine: true)
+                }
             }
         }
     }
@@ -459,6 +507,72 @@ struct HistoryMetricsContent: View {
         }
         .chartXAxis(.hidden) // X axis déjà affiché par le chart des barres
         .chartLegend(.hidden) // Légende déjà affichée par le chart des barres
+    }
+    
+    /// P0.3-A': Ligne de cumul seule (mode .cumulative) avec axe Y à gauche
+    private func cumulativeLineLayerSolo(domain: ClosedRange<Double>, yDomain: ClosedRange<Double>) -> some View {
+        Chart {
+            ForEach(viewModel.entryBuckets) { bucket in
+                let cumulValue = max(0, bucket.cumulative)
+                
+                LineMark(
+                    x: .value("Index", Double(bucket.order)),
+                    y: .value("Cumul", cumulValue)
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(Nexus.Colors.positive.opacity(0.8))
+                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                
+                PointMark(
+                    x: .value("Index", Double(bucket.order)),
+                    y: .value("Cumul", cumulValue)
+                )
+                .foregroundStyle(Nexus.Colors.positive)
+                .symbolSize(20)
+            }
+        }
+        .if(allowsHorizontalScroll) { chart in
+            chart.chartScrollableAxes(.horizontal)
+                .chartXVisibleDomain(length: visibleSpan)
+                .chartScrollPosition(x: $entryScrollPosition)
+        }
+        .if(!allowsHorizontalScroll) { chart in
+            chart.chartXScale(domain: domain)
+        }
+        .chartYScale(domain: yDomain)
+        .chartYAxis {
+            // Axe Y gauche pour le cumul (position: .leading)
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                    .foregroundStyle(Nexus.Colors.borderSubtle)
+                AxisTick()
+                AxisValueLabel()
+                    .foregroundStyle(Nexus.Colors.positive.opacity(0.8))
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: 1)) { value in
+                if let doubleVal = value.as(Double.self) {
+                    let intVal = Int(doubleVal.rounded())
+                    if abs(doubleVal - Double(intVal)) < 0.01,
+                       let label = viewModel.entryBuckets.first(where: { $0.order == intVal })?.label {
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                            .foregroundStyle(Nexus.Colors.borderSubtle)
+                        AxisTick()
+                        AxisValueLabel {
+                            Text(label)
+                                .font(Nexus.Typography.micro)
+                                .foregroundStyle(Nexus.Colors.textTertiary)
+                        }
+                    }
+                }
+            }
+        }
+        .chartLegend(position: .top, alignment: .leading) {
+            HStack(spacing: Nexus.Spacing.lg) {
+                legendItem(color: Nexus.Colors.positive.opacity(0.8), label: "Cumul", isLine: true)
+            }
+        }
     }
     
     /// Légende item helper
@@ -582,24 +696,110 @@ struct HistoryMetricsContent: View {
             SectionHeader(title: "Qualité / Couverture")
             
             VStack(spacing: 0) {
-                dataRow(
-                    label: "Période couverte",
-                    value: viewModel.coverageText ?? "n/a"
-                )
-                NexusDivider()
-                HStack {
-                    Text("Cohérence (pas de négatif)")
-                        .font(Nexus.Typography.body)
-                        .foregroundColor(Nexus.Colors.textSecondary)
-                    Spacer()
-                    if viewModel.hasNegativeDrift {
-                        Chip(label: "Alerte", icon: "exclamationmark.triangle.fill", style: .warning)
-                    } else {
-                        Chip(label: "OK", icon: "checkmark.circle.fill", style: .positive)
+                // P0.1: Enhanced coverage display
+                if let snapshot = viewModel.currentSnapshot {
+                    dataRow(
+                        label: "Période couverte",
+                        value: snapshot.coverageWindow.displayText
+                    )
+                    
+                    // Show gaps if detected
+                    if snapshot.coverageWindow.hasGaps {
+                        NexusDivider()
+                        VStack(alignment: .leading, spacing: Nexus.Spacing.xxs) {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Nexus.Colors.warning)
+                                Text("Trous détectés")
+                                    .font(Nexus.Typography.body)
+                                    .foregroundColor(Nexus.Colors.textSecondary)
+                                Spacer()
+                                Text("\(snapshot.coverageWindow.gaps.count)")
+                                    .font(Nexus.Typography.bodyMono)
+                                    .foregroundColor(Nexus.Colors.warning)
+                            }
+                            
+                            if let gapsDesc = snapshot.coverageWindow.gapsDescription {
+                                Text(gapsDesc)
+                                    .font(Nexus.Typography.micro)
+                                    .foregroundColor(Nexus.Colors.textTertiary)
+                                    .padding(.leading, 20)
+                            }
+                        }
+                        .padding(.vertical, Nexus.Spacing.sm)
+                        .padding(.horizontal, Nexus.Spacing.md)
                     }
+                    
+                    NexusDivider()
+                    
+                    // Data integrity issues
+                    if snapshot.hasDataIssues {
+                        VStack(alignment: .leading, spacing: Nexus.Spacing.xs) {
+                            HStack {
+                                Text("Intégrité des données")
+                                    .font(Nexus.Typography.body)
+                                    .foregroundColor(Nexus.Colors.textSecondary)
+                                Spacer()
+                                Chip(
+                                    label: "\(snapshot.dataIntegrityIssues.count) problème\(snapshot.dataIntegrityIssues.count > 1 ? "s" : "")",
+                                    icon: "exclamationmark.triangle.fill",
+                                    style: .warning
+                                )
+                            }
+                            
+                            ForEach(snapshot.dataIntegrityIssues) { issue in
+                                HStack(alignment: .top, spacing: Nexus.Spacing.xs) {
+                                    Image(systemName: issue.severity == .critical ? "xmark.circle.fill" : "exclamationmark.circle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(issue.severity == .critical ? Nexus.Colors.negative : Nexus.Colors.warning)
+                                    Text(issue.message)
+                                        .font(Nexus.Typography.micro)
+                                        .foregroundColor(Nexus.Colors.textTertiary)
+                                }
+                                .padding(.leading, 20)
+                            }
+                        }
+                        .padding(.vertical, Nexus.Spacing.sm)
+                        .padding(.horizontal, Nexus.Spacing.md)
+                        
+                        NexusDivider()
+                    }
+                    
+                    // Overall status
+                    HStack {
+                        Text("Statut global")
+                            .font(Nexus.Typography.body)
+                            .foregroundColor(Nexus.Colors.textSecondary)
+                        Spacer()
+                        if snapshot.hasDataIssues || snapshot.coverageWindow.hasGaps {
+                            Chip(label: "Problèmes détectés", icon: "exclamationmark.triangle.fill", style: .warning)
+                        } else {
+                            Chip(label: "OK", icon: "checkmark.circle.fill", style: .positive)
+                        }
+                    }
+                    .padding(.vertical, Nexus.Spacing.sm)
+                    .padding(.horizontal, Nexus.Spacing.md)
+                } else {
+                    dataRow(
+                        label: "Période couverte",
+                        value: viewModel.coverageText ?? "n/a"
+                    )
+                    NexusDivider()
+                    HStack {
+                        Text("Cohérence (pas de négatif)")
+                            .font(Nexus.Typography.body)
+                            .foregroundColor(Nexus.Colors.textSecondary)
+                        Spacer()
+                        if viewModel.hasNegativeDrift {
+                            Chip(label: "Alerte", icon: "exclamationmark.triangle.fill", style: .warning)
+                        } else {
+                            Chip(label: "OK", icon: "checkmark.circle.fill", style: .positive)
+                        }
+                    }
+                    .padding(.vertical, Nexus.Spacing.sm)
+                    .padding(.horizontal, Nexus.Spacing.md)
                 }
-                .padding(.vertical, Nexus.Spacing.sm)
-                .padding(.horizontal, Nexus.Spacing.md)
             }
             .background(Nexus.Colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: Nexus.Radius.md))

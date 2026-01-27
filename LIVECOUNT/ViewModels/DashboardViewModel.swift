@@ -7,6 +7,18 @@
 
 import Foundation
 import Observation
+import SwiftUI
+
+// MARK: - P0.3-A: Chart Display Mode
+
+/// Display mode for "Flux d'entrées" chart
+enum ChartDisplayMode: String, CaseIterable, Identifiable {
+    case bars = "Barres"
+    case cumulative = "Cumul"
+    case combined = "Combiné"
+    
+    var id: String { rawValue }
+}
 
 @Observable
 final class DashboardViewModel {
@@ -26,6 +38,9 @@ final class DashboardViewModel {
     
     // Period selection (single source of truth)
     var selectedPeriod: TimeRangeType = .today
+    
+    // P0.2: Time navigation offset
+    var rangeOffsetDays: Int = 0
 
     // MARK: - Today Chart Data (Entries/hour + Cumulative entries)
     struct HourlyEntryBucket: Identifiable {
@@ -39,6 +54,19 @@ final class DashboardViewModel {
     var isTodayChartLoading: Bool = false
     var todayChartBuckets: [HourlyEntryBucket] = []
     var todayCoverageHint: String?
+    
+    // P0.1.1: Data Integrity (Hard Issues vs Soft Signals)
+    var dataIntegrityIssues: [DataIntegrityIssue] = []
+    var dataFlowSignals: [DataFlowSignal] = []
+    var coverageWindow: DataCoverageWindow?
+    
+    var hasHardIntegrityIssues: Bool {
+        dataIntegrityIssues.contains { $0.severity == .critical }
+    }
+    
+    var hasSoftSignals: Bool {
+        !dataFlowSignals.isEmpty
+    }
     
     var location: Location?
     var user: User?
@@ -92,42 +120,24 @@ final class DashboardViewModel {
         user?.role == .admin
     }
     
+    /// True if there are any data integrity issues
+    var hasDataIssues: Bool {
+        !dataIntegrityIssues.isEmpty
+    }
+    
+    // P0.2: Navigation
+    
+    /// True if we can shift forward (not in the future)
+    var canShiftForward: Bool {
+        rangeOffsetDays < 0
+    }
+    
     /// Dynamic subtitle showing the selected period with date range
+    /// P0.2: Now supports offset navigation with unified labels
     var periodSubtitle: String {
-        let timeRange = TimeRange.from(type: selectedPeriod)
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "fr_FR")
-        formatter.timeZone = TimeZone.current
-        
-        switch selectedPeriod {
-        case .today:
-            // "Aujourd'hui · 17 jan 2026"
-            formatter.dateFormat = "d MMM yyyy"
-            return "Aujourd'hui · \(formatter.string(from: Date()))"
-            
-        case .last7Days:
-            // "7 derniers jours · 11–17 jan"
-            formatter.dateFormat = "d"
-            let startDay = formatter.string(from: timeRange.interval.start)
-            formatter.dateFormat = "d MMM"
-            let endFormatted = formatter.string(from: timeRange.interval.end)
-            return "7 derniers jours · \(startDay)–\(endFormatted)"
-            
-        case .last30Days:
-            // "30 derniers jours · 18 déc–17 jan"
-            formatter.dateFormat = "d MMM"
-            let startFormatted = formatter.string(from: timeRange.interval.start)
-            let endFormatted = formatter.string(from: timeRange.interval.end)
-            return "30 derniers jours · \(startFormatted)–\(endFormatted)"
-            
-        case .year:
-            // "Année · 18 jan 2025–17 jan 2026"
-            formatter.dateFormat = "d MMM yyyy"
-            let startFormatted = formatter.string(from: timeRange.interval.start)
-            formatter.dateFormat = "d MMM yyyy"
-            let endFormatted = formatter.string(from: timeRange.interval.end)
-            return "Année · \(startFormatted)–\(endFormatted)"
-        }
+        let timeRange = TimeRange.from(type: selectedPeriod, offsetDays: rangeOffsetDays)
+        let isCurrentPeriod = rangeOffsetDays == 0
+        return timeRange.rangeLabel(showPrefix: true, isCurrentPeriod: isCurrentPeriod)
     }
     
     // MARK: - Initialization
@@ -176,6 +186,33 @@ final class DashboardViewModel {
         emitEvent(delta: -1, type: .out)
     }
     
+    // P0.2: Time navigation
+    
+    /// Shift the time range by N steps (negative = past, positive = future)
+    func shiftRange(by step: Int) {
+        let delta: Int
+        switch selectedPeriod {
+        case .today:
+            delta = step
+        case .last7Days:
+            delta = step * 7
+        case .last30Days:
+            delta = step * 30
+        case .year:
+            delta = step * 365
+        }
+        
+        // Prevent going into the future
+        if rangeOffsetDays + delta > 0 {
+            return
+        }
+        
+        rangeOffsetDays += delta
+        
+        // For historical periods (not today), reload metrics via HistoryViewModel
+        // For today, no action needed as it's always live data
+    }
+    
     // MARK: - Private Methods
     
     /// Start the live data pipeline with rehydration from persisted entries
@@ -198,6 +235,11 @@ final class DashboardViewModel {
                 self.entriesLastXMin = state.entriesLastXMin
                 self.exitsLastXMin = state.exitsLastXMin
                 self.netLastXMin = state.netLastXMin
+                
+                // P0.1.1: Update data integrity (hard + soft)
+                self.dataIntegrityIssues = state.dataIntegrityIssues
+                self.dataFlowSignals = state.dataFlowSignals
+                self.coverageWindow = state.coverageWindow
             }
         }
     }

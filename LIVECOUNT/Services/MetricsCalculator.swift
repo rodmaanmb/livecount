@@ -50,6 +50,27 @@ enum MetricsCalculator {
             maxCapacity: maxCapacity
         )
         
+        // P0.1.1: Validate data integrity (hard issues) + analyze flow signals (soft)
+        let config = DataGapConfiguration.default
+        
+        // P0.1.1: HARD issues only (people_present < 0)
+        let hardIssues = DataIntegrityValidator.validate(
+            entries: entries,
+            timeRange: timeRange.interval
+        )
+        
+        // P0.1.1: SOFT signals (negative drain, inactivity)
+        let softSignals = DataIntegrityValidator.analyzeFlowSignals(
+            entries: entries,
+            timeRange: timeRange.interval,
+            config: config
+        )
+        
+        let coverage = DataIntegrityValidator.computeCoverageWindow(
+            entries: entries,
+            config: config
+        )
+        
         return MetricsSnapshot(
             totalEntries: totalEntries,
             totalEntriesIn: totalEntriesIn,
@@ -61,7 +82,10 @@ enum MetricsCalculator {
             peakCount: peakCount,
             peakTimestamp: peakTimestamp,
             timeRange: timeRange,
-            locationId: locationId
+            locationId: locationId,
+            dataIntegrityIssues: hardIssues,
+            dataFlowSignals: softSignals,
+            coverageWindow: coverage
         )
     }
     

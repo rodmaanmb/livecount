@@ -23,21 +23,36 @@ final class HistoryViewModel {
     var location: Location?
     
     // Visualization data
-    struct EntryBucket: Identifiable {
+    struct EntryBucket: Identifiable, Equatable {
         let id = UUID()
         let order: Int
         let label: String
         let current: Int
         let previous: Int?
         let cumulative: Int
+        
+        static func == (lhs: EntryBucket, rhs: EntryBucket) -> Bool {
+            lhs.order == rhs.order &&
+            lhs.label == rhs.label &&
+            lhs.current == rhs.current &&
+            lhs.previous == rhs.previous &&
+            lhs.cumulative == rhs.cumulative
+        }
     }
     
-    struct OccupancyBucket: Identifiable {
+    struct OccupancyBucket: Identifiable, Equatable {
         let id = UUID()
         let order: Int
         let label: String
         let currentPercent: Double
         let previousPercent: Double?
+        
+        static func == (lhs: OccupancyBucket, rhs: OccupancyBucket) -> Bool {
+            lhs.order == rhs.order &&
+            lhs.label == rhs.label &&
+            lhs.currentPercent == rhs.currentPercent &&
+            lhs.previousPercent == rhs.previousPercent
+        }
     }
     
     var entryBuckets: [EntryBucket] = []
@@ -87,6 +102,14 @@ final class HistoryViewModel {
                 let timeRange = TimeRange.from(type: selectedRangeType, offsetDays: rangeOffsetDays)
                 let previousRange = timeRange.previousPeriod()
                 
+                // #region agent log
+                #if DEBUG
+                let formatter = ISO8601DateFormatter()
+                print("📊 [loadMetrics] TimeRange created: \(selectedRangeType.rawValue) offset=\(rangeOffsetDays)")
+                print("   Range: \(formatter.string(from: timeRange.startDate)) → \(formatter.string(from: timeRange.endDate))")
+                #endif
+                // #endregion
+                
                 let locationId = location?.id ?? "default-location"
                 let maxCapacity = location?.maxCapacity ?? 100
                 
@@ -102,6 +125,17 @@ final class HistoryViewModel {
                     locationId: locationId,
                     deviceId: nil
                 )
+                
+                // #region agent log
+                #if DEBUG
+                print("📥 [loadMetrics] Fetched \(currentEntries.count) entries")
+                if let first = currentEntries.first, let last = currentEntries.last {
+                    let fmt = ISO8601DateFormatter()
+                    print("   First: \(fmt.string(from: first.timestamp))")
+                    print("   Last: \(fmt.string(from: last.timestamp))")
+                }
+                #endif
+                // #endregion
                 
                 // Compute current snapshot
                 let snapshot = MetricsCalculator.compute(
@@ -139,6 +173,12 @@ final class HistoryViewModel {
                 self.currentSnapshot = snapshot
                 self.comparison = comparisonResult
                 self.isLoading = false
+                
+                // #region agent log
+                #if DEBUG
+                print("✅ [loadMetrics] State updated: totalEntriesIn=\(snapshot.totalEntriesIn), buckets=\(self.entryBuckets.count)")
+                #endif
+                // #endregion
                 
             } catch {
                 self.errorMessage = "Erreur de chargement: \(error.localizedDescription)"
@@ -180,6 +220,11 @@ final class HistoryViewModel {
         }
         
         rangeOffsetDays += delta
+        
+        #if DEBUG
+        print("🔄 [shiftRange] \(selectedRangeType.rawValue) step=\(step) → newOffset=\(rangeOffsetDays)")
+        #endif
+        
         loadMetrics()
     }
     

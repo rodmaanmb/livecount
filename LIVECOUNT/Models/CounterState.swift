@@ -31,4 +31,32 @@ struct CounterState: Codable {
     
     /// Net change in the last X minutes (entries - exits)
     var netLastXMin: Int
+    
+    // MARK: - Data Integrity (P0.1.1: Hard Issues vs Soft Signals)
+    
+    /// P0.1.1: HARD integrity issues only (people_present < 0)
+    /// These trigger red alert banners
+    var dataIntegrityIssues: [DataIntegrityIssue]
+    
+    /// P0.1.1: SOFT flow signals (negative drain, inactivity)
+    /// These display in neutral info sections
+    var dataFlowSignals: [DataFlowSignal]
+    
+    /// Coverage window with gap detection
+    var coverageWindow: DataCoverageWindow
+    
+    /// P0.1.1: True if there are HARD integrity issues (red banner)
+    var hasHardIntegrityIssues: Bool {
+        dataIntegrityIssues.contains { $0.severity == .critical }
+    }
+    
+    /// P0.1.1: True if there are soft signals (info section)
+    var hasSoftSignals: Bool {
+        !dataFlowSignals.isEmpty
+    }
+    
+    /// Deprecated: Use hasHardIntegrityIssues instead
+    var hasDataIssues: Bool {
+        hasHardIntegrityIssues
+    }
 }
