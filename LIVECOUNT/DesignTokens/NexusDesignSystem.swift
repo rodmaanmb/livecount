@@ -142,6 +142,7 @@ struct MetricCard: View {
     var delta: String? = nil
     var deltaValue: Double? = nil
     var subtitle: String? = nil
+    var valueColor: Color = Nexus.Colors.textPrimary
     var size: MetricSize = .medium
     var elevation: Nexus.Elevation = .low
     
@@ -178,7 +179,7 @@ struct MetricCard: View {
             HStack(alignment: .firstTextBaseline, spacing: Nexus.Spacing.xs) {
                 Text(value)
                     .font(size.valueFont)
-                    .foregroundColor(Nexus.Colors.textPrimary)
+                    .foregroundColor(valueColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 

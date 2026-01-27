@@ -230,16 +230,16 @@ struct HistoryMetricsContent: View {
     private func metricsContent(snapshot: MetricsSnapshot) -> some View {
         VStack(spacing: Nexus.Spacing.xl) {
             // Hero KPIs
-            heroKPIsSection(snapshot: snapshot)
+            // TICKET 2: Résumé rapide unifié
+            if let summary = viewModel.reportSummary {
+                ReportSummaryCard(summary: summary)
+            }
             
             // Visualisations
             visualisationSection()
             
             // Qualité
             qualitySection()
-            
-            // Résumé rapide
-            summarySection(snapshot: snapshot)
             
             // Coverage section
             coverageSection(snapshot: snapshot)
@@ -253,28 +253,6 @@ struct HistoryMetricsContent: View {
             }
             
             Spacer(minLength: Nexus.Spacing.xxl)
-        }
-    }
-    
-    // MARK: - Hero KPIs (2-3 primary metrics)
-    
-    private func heroKPIsSection(snapshot: MetricsSnapshot) -> some View {
-        LazyVGrid(columns: [
-            GridItem(.flexible(), spacing: Nexus.Spacing.md),
-            GridItem(.flexible(), spacing: Nexus.Spacing.md)
-        ], spacing: Nexus.Spacing.md) {
-            MetricCard(
-                title: "Total entrées",
-                value: formatNumber(snapshot.totalEntriesIn),
-                size: .large
-            )
-            
-            MetricCard(
-                title: "Occupation moy.",
-                value: String(format: "%.0f", snapshot.avgOccupancyPercent),
-                unit: "%",
-                size: .large
-            )
         }
     }
     
@@ -350,7 +328,7 @@ struct HistoryMetricsContent: View {
         let yDomainBars = 0.0...Double(max(1, maxEntryDaily))
         let yDomainCumul = 0.0...Double(max(1, maxEntryCumulative))
         
-        return Group {
+        Group {
             switch chartDisplayMode {
             case .bars:
                 // Barres seules (axe Y gauche uniquement)
@@ -385,7 +363,7 @@ struct HistoryMetricsContent: View {
         let seriesCurrent = "Actuel"
         let seriesPrevious = "Précédent"
         
-        return Chart {
+        Chart {
             ForEach(viewModel.entryBuckets) { bucket in
                 let base = Double(bucket.order)
                 
@@ -614,7 +592,7 @@ struct HistoryMetricsContent: View {
         let domain = (Double(viewModel.occupancyBuckets.first?.order ?? 0) - horizontalDomainPadding)
             ... (Double(viewModel.occupancyBuckets.last?.order ?? 0) + horizontalDomainPadding)
         
-        return Chart {
+        Chart {
             ForEach(viewModel.occupancyBuckets) { bucket in
                 let base = Double(bucket.order)
                 
@@ -801,28 +779,6 @@ struct HistoryMetricsContent: View {
                     .padding(.horizontal, Nexus.Spacing.md)
                 }
             }
-            .background(Nexus.Colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: Nexus.Radius.md))
-            .overlay(
-                RoundedRectangle(cornerRadius: Nexus.Radius.md)
-                    .strokeBorder(Nexus.Colors.borderSubtle, lineWidth: 1)
-            )
-        }
-    }
-    
-    private func summarySection(snapshot: MetricsSnapshot) -> some View {
-        VStack(spacing: Nexus.Spacing.sm) {
-            SectionHeader(title: "Résumé rapide")
-            
-            VStack(alignment: .leading, spacing: Nexus.Spacing.xs) {
-                Text("• Net: \(formatDelta(snapshot.netChange))")
-                Text("• Pic: \(snapshot.peakCount)" + (snapshot.peakTimestamp != nil ? " @ \(formatTimestamp(snapshot.peakTimestamp!))" : ""))
-                Text("• Occup. moyenne: \(String(format: "%.1f%%", snapshot.avgOccupancyPercent))")
-            }
-            .font(Nexus.Typography.body)
-            .foregroundColor(Nexus.Colors.textPrimary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Nexus.Spacing.md)
             .background(Nexus.Colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: Nexus.Radius.md))
             .overlay(

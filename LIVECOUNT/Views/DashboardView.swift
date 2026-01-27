@@ -1052,5 +1052,5 @@ struct ShimmerModifier: ViewModifier {
     let user = User(id: "1", email: "admin@test.com", role: .admin, createdAt: Date())
     let vm = DashboardViewModel(location: location, user: user)
     vm.currentCount = 72
-    return DashboardView(viewModel: vm)
+    DashboardView(viewModel: vm)
 }

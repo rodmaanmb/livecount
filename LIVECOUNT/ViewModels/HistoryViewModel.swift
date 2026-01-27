@@ -232,6 +232,15 @@ final class HistoryViewModel {
         rangeOffsetDays < 0
     }
     
+    /// TICKET 2: ReportingSummary pour affichage unifié
+    var reportSummary: ReportingSummary? {
+        guard let snapshot = currentSnapshot else { return nil }
+        return ReportingEngine.makeSummary(
+            snapshot: snapshot,
+            maxCapacity: location?.maxCapacity ?? 100
+        )
+    }
+    
     // MARK: - Derived data for charts & quality
     
     private func deriveVisualizationData(

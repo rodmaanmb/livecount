@@ -68,6 +68,9 @@ final class DashboardViewModel {
         !dataFlowSignals.isEmpty
     }
     
+    // TICKET 2: Reporting (pour périodes historiques)
+    var currentSnapshot: MetricsSnapshot?
+    
     var location: Location?
     var user: User?
     
@@ -83,6 +86,16 @@ final class DashboardViewModel {
     
     var occupancyPercentage: Double {
         occupancyPercent * 100
+    }
+    
+    /// TICKET 2: ReportingSummary pour affichage unifié
+    /// Utilisé pour périodes historiques (offset != 0 ou selectedPeriod != .today)
+    var reportSummary: ReportingSummary? {
+        guard let snapshot = currentSnapshot else { return nil }
+        return ReportingEngine.makeSummary(
+            snapshot: snapshot,
+            maxCapacity: maxCapacity
+        )
     }
     
     /// Freshness in seconds since last event
