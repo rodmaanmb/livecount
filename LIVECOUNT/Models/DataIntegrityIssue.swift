@@ -109,7 +109,7 @@ struct DataCoverageWindow: Codable {
     var detailedDescription: String {
         var parts: [String] = []
         
-        if let start = startTimestamp, let end = endTimestamp {
+        if startTimestamp != nil && endTimestamp != nil {
             parts.append("Couverture: \(displayText)")
         } else {
             parts.append("Aucune donnée")

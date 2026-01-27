@@ -83,6 +83,7 @@ struct HistoryView: View {
 struct HistoryMetricsContent: View {
     @Bindable var viewModel: HistoryViewModel
     @State private var entryScrollPosition: Double = 0
+    @State private var selectedInsight: Insight?
     
     // P0.3-A': Chart display mode for Entrées chart (reusing same enum as Dashboard)
     @AppStorage("historyChartDisplayMode") private var chartDisplayMode: ChartDisplayMode = .combined
@@ -235,6 +236,10 @@ struct HistoryMetricsContent: View {
                 ReportSummaryCard(summary: summary)
             }
             
+            if !viewModel.insights.isEmpty {
+                insightsSection()
+            }
+            
             // Visualisations
             visualisationSection()
             
@@ -247,13 +252,84 @@ struct HistoryMetricsContent: View {
             // Occupancy section
             occupancySection(snapshot: snapshot)
             
-            // Comparison section
-            if let comparison = viewModel.comparison {
-                comparisonSection(comparison: comparison)
-            }
+            // Comparison section (Ticket 4)
+            ReportComparisonCard(delta: viewModel.reportDelta)
             
             Spacer(minLength: Nexus.Spacing.xxl)
         }
+        .sheet(item: $selectedInsight) { insight in
+            InsightDetailSheet(insight: insight)
+                .presentationDetents([.medium, .large])
+        }
+        .onChange(of: viewModel.insights) { _, _ in
+            selectedInsight = nil
+        }
+    }
+    
+    // MARK: - Insights
+    
+    private func insightsSection() -> some View {
+        VStack(spacing: Nexus.Spacing.sm) {
+            SectionHeader(title: "Insights déterministes", subtitle: "vs période précédente")
+            
+            VStack(alignment: .leading, spacing: Nexus.Spacing.sm) {
+                ForEach(viewModel.insights) { insight in
+                    Button {
+                        selectedInsight = insight
+                    } label: {
+                        insightRow(for: insight)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(Nexus.Spacing.md)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Nexus.Colors.accent.opacity(0.16),
+                        Nexus.Colors.surface
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Nexus.Radius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: Nexus.Radius.md)
+                    .strokeBorder(Nexus.Colors.borderSubtle, lineWidth: 1)
+            )
+        }
+    }
+    
+    private func insightRow(for insight: Insight) -> some View {
+        HStack(alignment: .top, spacing: Nexus.Spacing.sm) {
+            ZStack {
+                Circle()
+                    .fill(Nexus.Colors.accent.opacity(0.2))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "sparkle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Nexus.Colors.accent)
+            }
+            
+            VStack(alignment: .leading, spacing: Nexus.Spacing.xs) {
+                Text(insight.title)
+                    .font(Nexus.Typography.bodyEmphasis)
+                    .foregroundColor(Nexus.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                Text("Voir le calcul et les seuils")
+                    .font(Nexus.Typography.micro)
+                    .foregroundColor(Nexus.Colors.textTertiary)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(Nexus.Colors.textSecondary)
+                .font(.system(size: 14, weight: .semibold))
+        }
+        .padding(.vertical, Nexus.Spacing.xs)
     }
     
     // MARK: - Visualisation
@@ -317,6 +393,7 @@ struct HistoryMetricsContent: View {
     /// - `.bars`: Barres uniquement (Actuel/Précédent)
     /// - `.cumulative`: Ligne cumul uniquement
     /// - `.combined`: Barres + Ligne (dual Y-axis, comportement original)
+    @ViewBuilder
     private var dualAxisEntriesChart: some View {
         let domain = entryXDomain ?? {
             let first = Double(viewModel.entryBuckets.first?.order ?? 0)
@@ -359,6 +436,7 @@ struct HistoryMetricsContent: View {
     }
     
     /// Layer des barres d'entrées avec axe Y à gauche
+    @ViewBuilder
     private func barChartLayer(domain: ClosedRange<Double>, yDomain: ClosedRange<Double>) -> some View {
         let seriesCurrent = "Actuel"
         let seriesPrevious = "Précédent"
@@ -586,6 +664,7 @@ struct HistoryMetricsContent: View {
         )
     }
     
+    @ViewBuilder
     private var occupancyBarsChart: some View {
         let seriesCurrent = "Actuel"
         let seriesPrevious = "Précédent"
@@ -883,7 +962,7 @@ struct HistoryMetricsContent: View {
             VStack(spacing: 0) {
                 dataRow(
                     label: "Occupation moyenne",
-                    value: String(format: "%.1f%%", snapshot.avgOccupancyPercent)
+                    value: String(format: "%.1f%%", snapshot.avgOccupancyPercent * 100)
                 )
                 NexusDivider()
                 dataRow(
@@ -916,87 +995,6 @@ struct HistoryMetricsContent: View {
                     .strokeBorder(Nexus.Colors.borderSubtle, lineWidth: 1)
             )
         }
-    }
-    
-    // MARK: - Comparison Section
-    
-    private func comparisonSection(comparison: MetricsComparison) -> some View {
-        VStack(spacing: Nexus.Spacing.sm) {
-            SectionHeader(title: "vs. Période précédente")
-            
-            VStack(spacing: 0) {
-                comparisonRowInt(
-                    label: "Entrées",
-                    delta: comparison.entriesDelta,
-                    percentChange: comparison.entriesPercentChange
-                )
-                NexusDivider()
-                comparisonRowDouble(
-                    label: "Occupation moy.",
-                    delta: comparison.avgOccupancyDelta,
-                    format: "%.1f pts"
-                )
-                NexusDivider()
-                comparisonRowInt(
-                    label: "Pic d'occupation",
-                    delta: comparison.peakCountDelta,
-                    percentChange: nil
-                )
-            }
-            .padding(Nexus.Spacing.md)
-            .background(Nexus.Colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: Nexus.Radius.md))
-            .overlay(
-                RoundedRectangle(cornerRadius: Nexus.Radius.md)
-                    .strokeBorder(Nexus.Colors.borderSubtle, lineWidth: 1)
-            )
-        }
-    }
-    
-    private func comparisonRowInt(label: String, delta: Int, percentChange: Double?) -> some View {
-        HStack {
-            Text(label)
-                .font(Nexus.Typography.body)
-                .foregroundColor(Nexus.Colors.textSecondary)
-            
-            Spacer()
-            
-            HStack(spacing: Nexus.Spacing.xs) {
-                Image(systemName: delta > 0 ? "arrow.up" : (delta < 0 ? "arrow.down" : "minus"))
-                    .font(.system(size: 11, weight: .semibold))
-                
-                Text("\(abs(delta))")
-                    .font(Nexus.Typography.bodyMono)
-                
-                if let pct = percentChange {
-                    Text("(\(String(format: "%+.1f%%", pct)))")
-                        .font(Nexus.Typography.micro)
-                        .foregroundColor(Nexus.Colors.textTertiary)
-                }
-            }
-            .foregroundColor(Nexus.Colors.delta(delta))
-        }
-        .padding(.vertical, Nexus.Spacing.sm)
-    }
-    
-    private func comparisonRowDouble(label: String, delta: Double, format: String) -> some View {
-        HStack {
-            Text(label)
-                .font(Nexus.Typography.body)
-                .foregroundColor(Nexus.Colors.textSecondary)
-            
-            Spacer()
-            
-            HStack(spacing: Nexus.Spacing.xs) {
-                Image(systemName: delta > 0 ? "arrow.up" : (delta < 0 ? "arrow.down" : "minus"))
-                    .font(.system(size: 11, weight: .semibold))
-                
-                Text(String(format: format, abs(delta)))
-                    .font(Nexus.Typography.bodyMono)
-            }
-            .foregroundColor(Nexus.Colors.delta(delta))
-        }
-        .padding(.vertical, Nexus.Spacing.sm)
     }
     
     // MARK: - Formatters
@@ -1049,6 +1047,60 @@ private extension View {
             transform(self)
         } else {
             self
+        }
+    }
+}
+
+// MARK: - Insight Detail Sheet
+
+struct InsightDetailSheet: View {
+    let insight: Insight
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Nexus.Spacing.lg) {
+                Text(insight.title)
+                    .font(Nexus.Typography.headline)
+                    .foregroundColor(Nexus.Colors.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                
+                detailBlock(title: "Règle", lines: [insight.rule])
+                detailBlock(title: "Inputs", lines: insight.inputs)
+                detailBlock(title: "Seuils", lines: insight.thresholds)
+            }
+            .padding(Nexus.Spacing.xl)
+        }
+        .background(Nexus.Colors.background)
+    }
+    
+    private func detailBlock(title: String, lines: [String]) -> some View {
+        VStack(alignment: .leading, spacing: Nexus.Spacing.xs) {
+            Text(title)
+                .font(Nexus.Typography.captionEmphasis)
+                .foregroundColor(Nexus.Colors.textSecondary)
+            
+            VStack(alignment: .leading, spacing: Nexus.Spacing.xxs) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    HStack(alignment: .top, spacing: Nexus.Spacing.xs) {
+                        Circle()
+                            .fill(Nexus.Colors.accent.opacity(0.4))
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 4)
+                        
+                        Text(line)
+                            .font(Nexus.Typography.body)
+                            .foregroundColor(Nexus.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(Nexus.Spacing.md)
+            .background(Nexus.Colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: Nexus.Radius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: Nexus.Radius.md)
+                    .strokeBorder(Nexus.Colors.borderSubtle, lineWidth: 1)
+            )
         }
     }
 }

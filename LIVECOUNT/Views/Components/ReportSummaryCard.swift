@@ -82,7 +82,6 @@ struct ReportSummaryCard: View {
 #if DEBUG
 #Preview("ReportSummaryCard - Nominal") {
     let now = Date()
-    let timeRange = TimeRange(type: .last7Days, offsetDays: 0, referenceDate: now)
     
     let summary = ReportingSummary(
         totalEntries: "1,234",
@@ -109,9 +108,6 @@ struct ReportSummaryCard: View {
 }
 
 #Preview("ReportSummaryCard - Empty Data") {
-    let now = Date()
-    let timeRange = TimeRange(type: .today, offsetDays: 0, referenceDate: now)
-    
     let summary = ReportingSummary(
         totalEntries: "0",
         avgOccupancyPercent: "0,0%",
@@ -138,7 +134,6 @@ struct ReportSummaryCard: View {
 
 #Preview("ReportSummaryCard - Negative Net") {
     let now = Date()
-    let timeRange = TimeRange(type: .last7Days, offsetDays: 0, referenceDate: now)
     
     let summary = ReportingSummary(
         totalEntries: "1,234",

@@ -54,9 +54,11 @@ enum MetricsCalculator {
         let config = DataGapConfiguration.default
         
         // P0.1.1: HARD issues only (people_present < 0)
-        let hardIssues = DataIntegrityValidator.validate(
-            entries: entries,
-            timeRange: timeRange.interval
+        let hardIssues = DataIntegrityValidator.deduplicateIssues(
+            DataIntegrityValidator.validate(
+                entries: entries,
+                timeRange: timeRange.interval
+            )
         )
         
         // P0.1.1: SOFT signals (negative drain, inactivity)
@@ -264,11 +266,13 @@ enum MetricsCalculator {
         }
         
         let avgRatio = totalDuration > 0 ? (weightedOccupancySum / totalDuration) : 0.0
-        var avgOccupancy = avgRatio * 100
+        // BUGFIX: Retourner un ratio (0.0-1.0), pas un pourcentage (0-100)
+        // Le formatage en % se fait dans ReportingEngine via formattedPercent()
+        var avgOccupancy = avgRatio
         if !avgOccupancy.isFinite {
             avgOccupancy = 0.0
         }
-        avgOccupancy = min(max(avgOccupancy, 0.0), 100.0)
+        avgOccupancy = min(max(avgOccupancy, 0.0), 1.0)
         
         #if DEBUG
         if diagnosticsEnabled {

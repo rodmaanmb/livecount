@@ -108,7 +108,7 @@ enum ReportingEngineTests {
         print("\n🧪 Test 4: ReportingSummary nominal case")
         
         let now = Date()
-        let timeRange = TimeRange(type: .last7Days, offsetDays: 0, referenceDate: now)
+        let timeRange = TimeRange.from(type: .last7Days, offsetDays: 0)
         
         let snapshot = MetricsSnapshot(
             totalEntries: 2456,
@@ -148,7 +148,7 @@ enum ReportingEngineTests {
         print("\n🧪 Test 5: ReportingSummary with empty data")
         
         let now = Date()
-        let timeRange = TimeRange(type: .today, offsetDays: 0, referenceDate: now)
+        let timeRange = TimeRange.from(type: .today, offsetDays: 0)
         
         let snapshot = MetricsSnapshot(
             totalEntries: 0,
@@ -188,7 +188,7 @@ enum ReportingEngineTests {
         print("\n🧪 Test 6: ReportingSummary with large numbers")
         
         let now = Date()
-        let timeRange = TimeRange(type: .year, offsetDays: 0, referenceDate: now)
+        let timeRange = TimeRange.from(type: .year, offsetDays: 0)
         
         let snapshot = MetricsSnapshot(
             totalEntries: 2456789,
@@ -226,7 +226,7 @@ enum ReportingEngineTests {
         print("\n🧪 Test 7: ReportingDelta nominal case")
         
         let now = Date()
-        let timeRange = TimeRange(type: .last7Days, offsetDays: 0, referenceDate: now)
+        let timeRange = TimeRange.from(type: .last7Days, offsetDays: 0)
         
         let currentSnapshot = MetricsSnapshot(
             totalEntries: 2456,
@@ -282,7 +282,7 @@ enum ReportingEngineTests {
         print("\n🧪 Test 8: ReportingDelta division by zero")
         
         let now = Date()
-        let timeRange = TimeRange(type: .last7Days, offsetDays: 0, referenceDate: now)
+        let timeRange = TimeRange.from(type: .last7Days, offsetDays: 0)
         
         let currentSnapshot = MetricsSnapshot(
             totalEntries: 1234,
@@ -339,7 +339,7 @@ enum ReportingEngineTests {
         print("\n🧪 Test 9: ReportingStatus priority")
         
         let now = Date()
-        let timeRange = TimeRange(type: .today, offsetDays: 0, referenceDate: now)
+        let timeRange = TimeRange.from(type: .today, offsetDays: 0)
         
         // Test 1: dataIssue (highest priority)
         let snapshotWithIssue = MetricsSnapshot(

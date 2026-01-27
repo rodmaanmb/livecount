@@ -120,9 +120,11 @@ final class LiveAggregator {
         )
         
         // P0.1.1: HARD issues only (people_present < 0)
-        let hardIssues = DataIntegrityValidator.validate(
-            entries: recentEvents,
-            timeRange: timeRange
+        let hardIssues = DataIntegrityValidator.deduplicateIssues(
+            DataIntegrityValidator.validate(
+                entries: recentEvents,
+                timeRange: timeRange
+            )
         )
         
         // P0.1.1: SOFT signals (negative drain, inactivity)

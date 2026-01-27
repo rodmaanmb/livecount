@@ -19,6 +19,13 @@ final class HistoryViewModel {
     
     var currentSnapshot: MetricsSnapshot?
     var comparison: MetricsComparison?
+    var insights: [Insight] = []
+    
+    /// Ticket 4: Delta vs période précédente (for ReportComparisonCard)
+    var reportDelta: ReportingDelta? {
+        guard let comparison else { return nil }
+        return ReportingEngine.makeDelta(comparison: comparison)
+    }
     
     var location: Location?
     
@@ -159,6 +166,17 @@ final class HistoryViewModel {
                     previousRange: previousRange,
                     maxCapacity: maxCapacity
                 )
+                let previousSnapshot = comparisonResult?.previousSnapshot
+                
+                // Insights vs période précédente (rules-based)
+                self.insights = InsightsEngine.generate(
+                    currentSnapshot: snapshot,
+                    previousSnapshot: previousSnapshot,
+                    currentEntries: currentEntries,
+                    previousEntries: previousEntries,
+                    currentRange: timeRange,
+                    previousRange: previousRange
+                )
                 
                 // Derive visualization and quality indicators
                 deriveVisualizationData(
@@ -182,6 +200,7 @@ final class HistoryViewModel {
                 
             } catch {
                 self.errorMessage = "Erreur de chargement: \(error.localizedDescription)"
+                self.insights = []
                 self.isLoading = false
             }
         }

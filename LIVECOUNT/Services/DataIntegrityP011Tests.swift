@@ -63,7 +63,7 @@ enum DataIntegrityP011Tests {
                 userId: nil,
                 timestamp: Date().addingTimeInterval(120),
                 type: .out,
-                delta: -4,  // count = -2 ❌ HARD ISSUE
+                delta: -10,  // count = -6 ❌ HARD ISSUE (beyond threshold)
                 deviceId: "device1",
                 source: .hardware,
                 sequenceNumber: nil

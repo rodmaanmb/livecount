@@ -36,7 +36,8 @@ enum MetricsCalculatorSelfTests {
             locationId: "loc-1"
         )
         
-        assert(snapshot.avgOccupancyPercent >= 0.0 && snapshot.avgOccupancyPercent <= 100.0)
+        // BUGFIX: avgOccupancyPercent est maintenant un ratio (0.0-1.0), pas un pourcentage
+        assert(snapshot.avgOccupancyPercent >= 0.0 && snapshot.avgOccupancyPercent <= 1.0)
         assert(snapshot.peakCount == 120)
     }
     
@@ -59,7 +60,8 @@ enum MetricsCalculatorSelfTests {
         )
         
         assert(snapshot.peakCount == 120)
-        assert(snapshot.avgOccupancyPercent <= 100.0)
+        // BUGFIX: avgOccupancyPercent est maintenant un ratio (0.0-1.0), pas un pourcentage
+        assert(snapshot.avgOccupancyPercent <= 1.0)
     }
     
     private static func testEmptyEntriesReturnsZero() {

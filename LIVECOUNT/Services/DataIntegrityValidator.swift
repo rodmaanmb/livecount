@@ -51,6 +51,11 @@ struct ClassifiedGap {
 /// Service for validating data integrity in event streams
 final class DataIntegrityValidator {
     
+    // MARK: - Thresholds
+    
+    /// Negative count below this threshold is considered a hard integrity issue
+    private static let hardNegativeThreshold: Int = -5
+    
     // MARK: - Main Validation (P0.1.1: Hard Issues Only)
     
     /// P0.1.1: Validates HARD integrity issues only (proven inconsistencies)
@@ -96,26 +101,54 @@ final class DataIntegrityValidator {
         for entry in entries {
             runningCount += entry.delta
             
-            if runningCount < 0 {
-                let formatter = DateFormatter()
-                formatter.locale = Locale(identifier: "fr_FR")
-                formatter.timeZone = TimeZone.current
-                formatter.dateFormat = "HH:mm"
-                
-                issues.append(DataIntegrityIssue(
-                    type: .negativeCount,
-                    severity: .critical,
-                    message: "Incohérence : compteur négatif (\(runningCount)) à \(formatter.string(from: entry.timestamp))",
-                    detectedAt: entry.timestamp,
-                    affectedTimeRange: nil
-                ))
-                
-                // Clamp to 0 to continue validation
-                runningCount = max(0, runningCount)
+            guard runningCount < 0 else { continue }
+            
+            // Ignore small transient negatives (noise when inactive / short window)
+            if runningCount > hardNegativeThreshold {
+                runningCount = 0
+                continue
             }
+            
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "fr_FR")
+            formatter.timeZone = TimeZone.current
+            formatter.dateFormat = "HH:mm"
+            
+            issues.append(DataIntegrityIssue(
+                type: .negativeCount,
+                severity: .critical,
+                message: "Incohérence : compteur négatif (\(runningCount)) à \(formatter.string(from: entry.timestamp))",
+                detectedAt: entry.timestamp,
+                affectedTimeRange: nil
+            ))
+            
+            // Clamp to 0 to continue validation
+            runningCount = 0
         }
         
         return issues
+    }
+    
+    /// Deduplicate issues and cap the number displayed to avoid UI spam
+    /// - Parameters:
+    ///   - issues: List of issues to process
+    ///   - limit: Maximum number of issues to keep (most recent first)
+    static func deduplicateIssues(_ issues: [DataIntegrityIssue], limit: Int = 3) -> [DataIntegrityIssue] {
+        guard !issues.isEmpty else { return issues }
+        
+        let sorted = issues.sorted { $0.detectedAt > $1.detectedAt }
+        var seen = Set<String>()
+        var deduped: [DataIntegrityIssue] = []
+        
+        for issue in sorted {
+            let key = "\(issue.type.rawValue)|\(issue.detectedAt.timeIntervalSinceReferenceDate)"
+            guard seen.insert(key).inserted else { continue }
+            
+            deduped.append(issue)
+            if deduped.count == limit { break }
+        }
+        
+        return deduped
     }
     
     // MARK: - Soft Signal Analysis (P0.1.1)

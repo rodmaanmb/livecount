@@ -67,11 +67,11 @@ enum DataIntegrityValidatorTests {
     static func testNegativeCount() {
         print("\n📋 Test 2: Detect negative count")
         
-        let entries = [
+        // Small negative drift should NOT trigger a hard issue (noise)
+        let smallNegative = [
             makeEntry(timestamp: date(hour: 10, minute: 0), delta: 1),
             makeEntry(timestamp: date(hour: 10, minute: 5), delta: -1),
-            makeEntry(timestamp: date(hour: 10, minute: 10), delta: -1),  // This should trigger negative
-            makeEntry(timestamp: date(hour: 10, minute: 15), delta: 1)
+            makeEntry(timestamp: date(hour: 10, minute: 10), delta: -1)
         ]
         
         let timeRange = DateInterval(
@@ -79,15 +79,29 @@ enum DataIntegrityValidatorTests {
             end: date(hour: 10, minute: 30)
         )
         
+        let issuesNoise = DataIntegrityValidator.validate(
+            entries: smallNegative,
+            timeRange: timeRange
+        )
+        
+        assert(issuesNoise.isEmpty, "Expected NO hard issues for small negative drift, got \(issuesNoise.count)")
+        print("   ✓ Small negative drift ignored as expected")
+        
+        // Large negative should trigger a hard issue
+        let largeNegative = [
+            makeEntry(timestamp: date(hour: 11, minute: 0), delta: 1),
+            makeEntry(timestamp: date(hour: 11, minute: 5), delta: -6)  // count = -5 → hard issue
+        ]
+        
         let issues = DataIntegrityValidator.validate(
-            entries: entries,
+            entries: largeNegative,
             timeRange: timeRange
         )
         
         let negativeIssues = issues.filter { $0.type == DataIntegrityIssue.IssueType.negativeCount }
-        assert(negativeIssues.count == 1, "Expected 1 negative count issue, got \(negativeIssues.count)")
+        assert(negativeIssues.count == 1, "Expected 1 negative count issue for severe drop, got \(negativeIssues.count)")
         assert(negativeIssues.first?.severity == .critical, "Expected critical severity")
-        print("   ✓ Negative count detected correctly")
+        print("   ✓ Severe negative count detected correctly")
         print("   ℹ️  Message: \(negativeIssues.first?.message ?? "none")")
     }
     

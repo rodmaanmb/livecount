@@ -428,6 +428,7 @@ struct DashboardView: View {
                     emptyChartState
                 } else {
                     combinedChart
+                        .frame(height: 240)
                 }
                 
                 // P0.1: Enhanced coverage display
@@ -525,18 +526,16 @@ struct DashboardView: View {
     /// - `.bars`: Barres uniquement (axe Y gauche)
     /// - `.cumulative`: Ligne cumul uniquement (axe Y gauche)
     /// - `.combined`: Barres (axe Y gauche) + Ligne cumul (axe Y droit)
+    @ViewBuilder
     private var combinedChart: some View {
-        Group {
-            switch chartDisplayMode {
-            case .bars:
-                barsOnlyChart
-            case .cumulative:
-                cumulativeOnlyChart
-            case .combined:
-                combinedBarsAndLineChart
-            }
+        switch chartDisplayMode {
+        case .bars:
+            barsOnlyChart
+        case .cumulative:
+            cumulativeOnlyChart
+        case .combined:
+            combinedBarsAndLineChart
         }
-        .frame(height: 240)
     }
     
     /// P0.3-A: Bars only mode
@@ -1048,9 +1047,20 @@ struct ShimmerModifier: ViewModifier {
 }
 
 #Preview("With Data") {
-    let location = Location(id: "1", name: "Salle Principale", maxCapacity: 100, timezone: "Europe/Paris")
-    let user = User(id: "1", email: "admin@test.com", role: .admin, createdAt: Date())
-    let vm = DashboardViewModel(location: location, user: user)
+    let location: Location = Location(
+        id: "1",
+        name: "Salle Principale",
+        maxCapacity: 100,
+        timezone: "Europe/Paris"
+    )
+    let user: User = User(
+        id: "1",
+        email: "admin@test.com",
+        role: .admin,
+        createdAt: Date()
+    )
+    let vm: DashboardViewModel = DashboardViewModel(location: location, user: user)
     vm.currentCount = 72
-    DashboardView(viewModel: vm)
+    let view: DashboardView = DashboardView(viewModel: vm)
+    return view
 }
