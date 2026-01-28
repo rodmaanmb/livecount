@@ -24,6 +24,13 @@ struct DashboardView: View {
     @State private var seedingError: String?
     @State private var showSeedAlert: Bool = false
     
+    // Export state
+    @State private var isExporting: Bool = false
+    @State private var exportError: String?
+    @State private var showExportError: Bool = false
+    @State private var shareURL: URL?
+    @State private var showShareSheet: Bool = false
+    
     init(viewModel: DashboardViewModel = DashboardViewModel()) {
         _viewModel = State(initialValue: viewModel)
         _historyViewModel = State(initialValue: HistoryViewModel(
@@ -65,6 +72,11 @@ struct DashboardView: View {
                 SimulatorView(viewModel: viewModel)
                     .presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $showShareSheet, onDismiss: { shareURL = nil }) {
+                if let url = shareURL {
+                    ShareSheet(activityItems: [url])
+                }
+            }
             .onChange(of: viewModel.selectedPeriod) { _, newPeriod in
                 triggerHapticFeedback(.light)
                 
@@ -81,6 +93,11 @@ struct DashboardView: View {
                 Button("OK") { showSeedAlert = false; seedingError = nil }
             } message: {
                 Text(seedingError ?? "6 mois de données générées avec succès.")
+            }
+            .alert("Export CSV", isPresented: $showExportError) {
+                Button("OK") { showExportError = false; exportError = nil }
+            } message: {
+                Text(exportError ?? "Erreur inconnue.")
             }
             .overlay { seedingOverlay }
         }
@@ -895,6 +912,11 @@ struct DashboardView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
             Menu {
+                Button(action: { Task { await exportCSV() } }) {
+                    Label("Exporter CSV", systemImage: "square.and.arrow.up")
+                }
+                .disabled(isExporting)
+                
                 Button(action: { Task { await seedDemoData() } }) {
                     Label("Générer données (6 mois)", systemImage: "wand.and.stars")
                 }
@@ -999,6 +1021,24 @@ struct DashboardView: View {
             showSeedAlert = true
             isSeeding = false
         }
+    }
+    
+    @MainActor
+    private func exportCSV() async {
+        guard !isExporting else { return }
+        isExporting = true
+        exportError = nil
+        
+        do {
+            let url = try await historyViewModel.exportCSV(location: viewModel.location)
+            shareURL = url
+            showShareSheet = true
+        } catch {
+            exportError = error.localizedDescription
+            showExportError = true
+        }
+        
+        isExporting = false
     }
     
     private func triggerHapticFeedback(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {

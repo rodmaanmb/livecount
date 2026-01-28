@@ -217,6 +217,35 @@ final class HistoryViewModel {
     deinit {
         loadTask?.cancel()
     }
+    
+    // MARK: - Export
+    
+    /// Build CSV export for the currently selected period (with offset)
+    func exportCSV(location: Location?) async throws -> URL {
+        let timeRange = TimeRange.from(type: selectedRangeType, offsetDays: rangeOffsetDays)
+        let locationId = location?.id ?? "default-location"
+        let maxCapacity = location?.maxCapacity ?? 100
+        
+        let entries = try await entryStore.fetch(
+            timeRange: timeRange.interval,
+            locationId: locationId,
+            deviceId: nil
+        )
+        
+        let snapshot = MetricsCalculator.compute(
+            entries: entries,
+            timeRange: timeRange,
+            maxCapacity: maxCapacity,
+            locationId: locationId
+        )
+        
+        return try CSVReportBuilder.build(
+            snapshot: snapshot,
+            entries: entries,
+            timeRange: timeRange,
+            location: location
+        )
+    }
 
     // MARK: - Navigation
     
