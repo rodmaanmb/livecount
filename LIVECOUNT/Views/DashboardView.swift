@@ -288,7 +288,7 @@ struct DashboardView: View {
     // MARK: - Hero Occupancy Card
     
     private var heroOccupancyCard: some View {
-        VStack(spacing: Nexus.Spacing.lg) {
+        VStack(alignment: .leading, spacing: Nexus.Spacing.md) {
             // Status chip
             HStack {
                 Chip(
@@ -299,73 +299,12 @@ struct DashboardView: View {
                 Spacer()
             }
             
-            // Main count value
-            HStack(alignment: .firstTextBaseline, spacing: Nexus.Spacing.sm) {
-                Text("\(viewModel.currentCount)")
-                    .font(Nexus.Typography.heroNumber)
-                    .foregroundColor(Nexus.Colors.status(viewModel.status))
-                    .monospacedDigit()
-                
-                Text("/ \(viewModel.maxCapacity)")
-                    .font(Nexus.Typography.mediumNumber)
-                    .foregroundColor(Nexus.Colors.textTertiary)
-                    .monospacedDigit()
-            }
-            
-            // Progress bar
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Nexus.Colors.surface)
-                        .frame(height: 8)
-                    
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Nexus.Colors.status(viewModel.status))
-                        .frame(
-                            width: geo.size.width * min(viewModel.occupancyPercent, 1.0),
-                            height: 8
-                        )
-                }
-            }
-            .frame(height: 8)
-            
-            // Metrics row
-            HStack(spacing: Nexus.Spacing.lg) {
-                metricDetail(
-                    icon: "percent",
-                    label: "Occupation",
-                    value: "\(Int(viewModel.occupancyPercentage))%"
-                )
-                
-                Spacer()
-                
-                metricDetail(
-                    icon: "person.badge.plus",
-                    label: "Disponibles",
-                    value: "\(viewModel.remainingSpots)"
-                )
-            }
+            OccupancyDonutView(
+                occupied: viewModel.currentCount,
+                capacity: viewModel.maxCapacity
+            )
         }
         .nexusCard(elevation: .medium)
-    }
-    
-    private func metricDetail(icon: String, label: String, value: String) -> some View {
-        HStack(spacing: Nexus.Spacing.xs) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Nexus.Colors.textSecondary)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(Nexus.Typography.micro)
-                    .foregroundColor(Nexus.Colors.textTertiary)
-                
-                Text(value)
-                    .font(Nexus.Typography.captionEmphasis)
-                    .foregroundColor(Nexus.Colors.textPrimary)
-                    .monospacedDigit()
-            }
-        }
     }
     
     private var statusLabel: String {
@@ -377,11 +316,8 @@ struct DashboardView: View {
     }
     
     private func chipStyle(for status: OccupancyStatus) -> Chip.ChipStyle {
-        switch status {
-        case .ok: return .positive
-        case .warning: return .warning
-        case .full: return .negative
-        }
+        // Donut palette: keep badge cool/neutral (blue) regardless of status
+        return .info
     }
     
     // MARK: - Secondary KPIs Grid
@@ -445,7 +381,7 @@ struct DashboardView: View {
                     emptyChartState
                 } else {
                     combinedChart
-                        .frame(height: 240)
+                        .frame(height: 200)
                 }
                 
                 // P0.1: Enhanced coverage display
@@ -522,7 +458,7 @@ struct DashboardView: View {
     private var loadingSkeleton: some View {
         RoundedRectangle(cornerRadius: Nexus.Radius.sm)
             .fill(Nexus.Colors.surface)
-            .frame(height: 220)
+            .frame(height: 200)
             .shimmer()
     }
     
@@ -557,10 +493,12 @@ struct DashboardView: View {
     
     /// P0.3-A: Bars only mode
     private var barsOnlyChart: some View {
-        Chart(viewModel.todayChartBuckets) { bucket in
+        let scaler = ChartScaler(values: viewModel.todayChartBuckets.map { Double($0.entries) })
+        return Chart(viewModel.todayChartBuckets) { bucket in
+            let capped = scaler.capped(Double(bucket.entries))
             BarMark(
                 x: .value("Heure", bucket.date, unit: .hour),
-                y: .value("Entrées", bucket.entries),
+                y: .value("Entrées", capped),
                 width: .fixed(16)
             )
             .foregroundStyle(Nexus.Colors.accent)
@@ -570,12 +508,12 @@ struct DashboardView: View {
                     .foregroundStyle(Nexus.Colors.border)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
                     .annotation(position: .top, alignment: .leading) {
-                        chartTooltip(for: selected)
+                        chartTooltip(for: selected, scaler: scaler)
                     }
             }
         }
         .chartXScale(domain: chartXDomain)
-        .chartYScale(domain: normalizedBarsDomain)
+        .chartYScale(domain: normalizedBarsDomain(scaler: scaler))
         .chartXAxis {
             AxisMarks(values: .stride(by: .hour, count: hourLabelStride)) { _ in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
@@ -599,12 +537,13 @@ struct DashboardView: View {
     
     /// P0.3-A: Cumulative line only mode
     private var cumulativeOnlyChart: some View {
-        Chart(viewModel.todayChartBuckets) { bucket in
+        let scaler = ChartScaler(values: viewModel.todayChartBuckets.map { Double(max(0, $0.cumulative)) })
+        return Chart(viewModel.todayChartBuckets) { bucket in
             let cumulValue = max(0, bucket.cumulative)
             
             LineMark(
                 x: .value("Heure", bucket.date, unit: .hour),
-                y: .value("Cumul", cumulValue)
+                y: .value("Cumul", scaler.capped(Double(cumulValue)))
             )
             .interpolationMethod(.monotone)
             .foregroundStyle(Nexus.Colors.positive.opacity(0.8))
@@ -612,7 +551,7 @@ struct DashboardView: View {
             
             PointMark(
                 x: .value("Heure", bucket.date, unit: .hour),
-                y: .value("Cumul", cumulValue)
+                y: .value("Cumul", scaler.capped(Double(cumulValue)))
             )
             .foregroundStyle(Nexus.Colors.positive)
             .symbolSize(16)
@@ -627,7 +566,7 @@ struct DashboardView: View {
             }
         }
         .chartXScale(domain: chartXDomain)
-        .chartYScale(domain: normalizedCumulativeDomain)
+        .chartYScale(domain: normalizedCumulativeDomain(scaler: scaler))
         .chartXAxis {
             AxisMarks(values: .stride(by: .hour, count: hourLabelStride)) { _ in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
@@ -659,10 +598,14 @@ struct DashboardView: View {
     
     /// Barres d'entrées/heure avec axe Y à gauche (position: .leading)
     private var todayBarChart: some View {
-        Chart(viewModel.todayChartBuckets) { bucket in
+        let scaler = ChartScaler(values: viewModel.todayChartBuckets.map { Double($0.entries) })
+        
+        return Chart(viewModel.todayChartBuckets) { bucket in
+            let capped = scaler.capped(Double(bucket.entries))
+            
             BarMark(
                 x: .value("Heure", bucket.date, unit: .hour),
-                y: .value("Entrées", bucket.entries),
+                y: .value("Entrées", capped),
                 width: .fixed(16)
             )
             .foregroundStyle(Nexus.Colors.accent)
@@ -672,12 +615,12 @@ struct DashboardView: View {
                     .foregroundStyle(Nexus.Colors.border)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
                     .annotation(position: .top, alignment: .leading) {
-                        chartTooltip(for: selected)
+                        chartTooltip(for: selected, scaler: scaler)
                     }
             }
         }
         .chartXScale(domain: chartXDomain)
-        .chartYScale(domain: normalizedBarsDomain)
+        .chartYScale(domain: normalizedBarsDomain(scaler: scaler))
         .chartXAxis {
             AxisMarks(values: .stride(by: .hour, count: hourLabelStride)) { _ in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
@@ -703,13 +646,14 @@ struct DashboardView: View {
     /// Ligne de cumul avec axe Y à droite (position: .trailing)
     /// Le cumul est strictement monotone croissant et jamais < 0
     private var todayCumulativeLineChart: some View {
-        Chart(viewModel.todayChartBuckets) { bucket in
+        let scaler = ChartScaler(values: viewModel.todayChartBuckets.map { Double(max(0, $0.cumulative)) })
+        return Chart(viewModel.todayChartBuckets) { bucket in
             // Cumul = somme progressive, jamais négatif
             let cumulValue = max(0, bucket.cumulative)
             
             LineMark(
                 x: .value("Heure", bucket.date, unit: .hour),
-                y: .value("Cumul", cumulValue)
+                y: .value("Cumul", scaler.capped(Double(cumulValue)))
             )
             .interpolationMethod(.monotone)
             .foregroundStyle(Nexus.Colors.positive.opacity(0.8))
@@ -718,13 +662,13 @@ struct DashboardView: View {
             // Points sur la ligne pour lisibilité
             PointMark(
                 x: .value("Heure", bucket.date, unit: .hour),
-                y: .value("Cumul", cumulValue)
+                y: .value("Cumul", scaler.capped(Double(cumulValue)))
             )
             .foregroundStyle(Nexus.Colors.positive)
             .symbolSize(16)
         }
         .chartXScale(domain: chartXDomain)
-        .chartYScale(domain: normalizedCumulativeDomain)
+        .chartYScale(domain: normalizedCumulativeDomain(scaler: scaler))
         .chartXAxis(.hidden) // X axis déjà affiché par le chart des barres
         .chartYAxis {
             // Axe Y droit pour le cumul (métrique secondaire)
@@ -738,7 +682,7 @@ struct DashboardView: View {
     }
     
     // P0.3-A: Enhanced tooltip with delta vs previous hour
-    private func chartTooltip(for bucket: DashboardViewModel.HourlyEntryBucket) -> some View {
+    private func chartTooltip(for bucket: DashboardViewModel.HourlyEntryBucket, scaler: ChartScaler? = nil) -> some View {
         VStack(alignment: .leading, spacing: Nexus.Spacing.xxs) {
             Text(hourLabel(for: bucket.date))
                 .font(Nexus.Typography.caption)
@@ -750,7 +694,21 @@ struct DashboardView: View {
                     Text("Entrées")
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(formatNumber(bucket.entries))
+                        if let scaler {
+                            let capped = scaler.capped(Double(bucket.entries))
+                            let cappedInt = Int(capped.rounded())
+                            if cappedInt < bucket.entries {
+                                Text("\(formatNumber(cappedInt)) (capé)")
+                                    .foregroundColor(Nexus.Colors.textSecondary)
+                                Text("Réel: \(formatNumber(bucket.entries))")
+                                    .font(Nexus.Typography.micro)
+                                    .foregroundColor(Nexus.Colors.textTertiary)
+                            } else {
+                                Text(formatNumber(bucket.entries))
+                            }
+                        } else {
+                            Text(formatNumber(bucket.entries))
+                        }
                         if let delta = previousHourDelta(for: bucket) {
                             Text(delta.formatted)
                                 .font(Nexus.Typography.micro)
@@ -823,15 +781,15 @@ struct DashboardView: View {
     }
     
     // P0.3-A: Normalized domains with 10% margin
-    private var normalizedBarsDomain: ClosedRange<Double> {
-        let max = Double(maxEntries)
-        let upperBound = max > 0 ? max * 1.1 : 1.0
+    private func normalizedBarsDomain(scaler: ChartScaler? = nil) -> ClosedRange<Double> {
+        let maxVal = scaler?.displayMax ?? Double(maxEntries)
+        let upperBound = maxVal > 0 ? maxVal * 1.1 : 1.0
         return 0...upperBound
     }
     
-    private var normalizedCumulativeDomain: ClosedRange<Double> {
-        let max = Double(maxCumulative)
-        let upperBound = max > 0 ? max * 1.1 : 1.0
+    private func normalizedCumulativeDomain(scaler: ChartScaler? = nil) -> ClosedRange<Double> {
+        let maxVal = scaler?.displayMax ?? Double(maxCumulative)
+        let upperBound = maxVal > 0 ? maxVal * 1.1 : 1.0
         return 0...upperBound
     }
     

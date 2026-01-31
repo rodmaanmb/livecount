@@ -395,6 +395,14 @@ struct HistoryMetricsContent: View {
     /// - `.combined`: Barres + Ligne (dual Y-axis, comportement original)
     @ViewBuilder
     private var dualAxisEntriesChart: some View {
+        let barValues = viewModel.entryBuckets.flatMap { bucket -> [Double] in
+            var arr: [Double] = [Double(bucket.current)]
+            if let prev = bucket.previous { arr.append(Double(prev)) }
+            return arr
+        }
+        let cumulValues = viewModel.entryBuckets.map { Double($0.cumulative) }
+        let scalerBars = ChartScaler(values: barValues)
+        let scalerCumul = ChartScaler(values: cumulValues)
         let domain = entryXDomain ?? {
             let first = Double(viewModel.entryBuckets.first?.order ?? 0)
             let last = Double(viewModel.entryBuckets.last?.order ?? 0)
@@ -402,21 +410,21 @@ struct HistoryMetricsContent: View {
         }()
         
         // Domaines Y indépendants
-        let yDomainBars = 0.0...Double(max(1, maxEntryDaily))
-        let yDomainCumul = 0.0...Double(max(1, maxEntryCumulative))
+        let yDomainBars = 0.0...max(1.0, scalerBars.displayMax * 1.1)
+        let yDomainCumul = 0.0...max(1.0, scalerCumul.displayMax * 1.1)
         
-        Group {
+        VStack(spacing: Nexus.Spacing.xs) {
             switch chartDisplayMode {
             case .bars:
                 // Barres seules (axe Y gauche uniquement)
-                barChartLayer(domain: domain, yDomain: yDomainBars)
+                barChartLayer(domain: domain, yDomain: yDomainBars, scaler: scalerBars)
                     .onChange(of: viewModel.entryBuckets) { _, _ in
                         resetEntryScrollPositionIfNeeded()
                     }
                 
             case .cumulative:
                 // Ligne de cumul seule (axe Y gauche uniquement)
-                cumulativeLineLayerSolo(domain: domain, yDomain: yDomainCumul)
+                cumulativeLineLayerSolo(domain: domain, yDomain: yDomainCumul, scaler: scalerCumul)
                     .onChange(of: viewModel.entryBuckets) { _, _ in
                         resetEntryScrollPositionIfNeeded()
                     }
@@ -424,40 +432,49 @@ struct HistoryMetricsContent: View {
             case .combined:
                 // Dual-axis: barres (gauche) + cumul (droite) - comportement original
                 ZStack {
-                    barChartLayer(domain: domain, yDomain: yDomainBars)
-                    cumulativeLineLayer(domain: domain, yDomain: yDomainCumul)
+                    barChartLayer(domain: domain, yDomain: yDomainBars, scaler: scalerBars)
+                    cumulativeLineLayer(domain: domain, yDomain: yDomainCumul, scaler: scalerCumul)
                 }
                 .onChange(of: viewModel.entryBuckets) { _, _ in
                     resetEntryScrollPositionIfNeeded()
                 }
             }
+            
+            if scalerBars.isCapped || scalerCumul.isCapped {
+                Text("Capage P95 pour lisibilité (valeurs réelles dans les tooltips).")
+                    .font(Nexus.Typography.micro)
+                    .foregroundColor(Nexus.Colors.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .frame(height: 240)
+        .frame(height: 200)
     }
     
     /// Layer des barres d'entrées avec axe Y à gauche
     @ViewBuilder
-    private func barChartLayer(domain: ClosedRange<Double>, yDomain: ClosedRange<Double>) -> some View {
+    private func barChartLayer(domain: ClosedRange<Double>, yDomain: ClosedRange<Double>, scaler: ChartScaler) -> some View {
         let seriesCurrent = "Actuel"
         let seriesPrevious = "Précédent"
         
         Chart {
             ForEach(viewModel.entryBuckets) { bucket in
                 let base = Double(bucket.order)
+                let cappedCurrent = scaler.capped(Double(bucket.current))
                 
                 // Barre période actuelle
                 BarMark(
                     x: .value("Index", base - 0.15),
-                    y: .value("Entrées", bucket.current),
+                    y: .value("Entrées", cappedCurrent),
                     width: .fixed(12)
                 )
                 .foregroundStyle(by: .value("Série", seriesCurrent))
                 
                 // Barre période précédente (optionnelle)
                 if let previous = bucket.previous {
+                    let cappedPrev = scaler.capped(Double(previous))
                     BarMark(
                         x: .value("Index", base + 0.15),
-                        y: .value("Entrées", previous),
+                        y: .value("Entrées", cappedPrev),
                         width: .fixed(12)
                     )
                     .foregroundStyle(by: .value("Série", seriesPrevious))
@@ -520,15 +537,16 @@ struct HistoryMetricsContent: View {
     }
     
     /// Layer de la ligne de cumul avec axe Y à droite
-    private func cumulativeLineLayer(domain: ClosedRange<Double>, yDomain: ClosedRange<Double>) -> some View {
+    private func cumulativeLineLayer(domain: ClosedRange<Double>, yDomain: ClosedRange<Double>, scaler: ChartScaler) -> some View {
         Chart {
             ForEach(viewModel.entryBuckets) { bucket in
                 // Cumul = somme progressive, monotone croissante, jamais < 0
                 let cumulValue = max(0, bucket.cumulative)
+                let capped = scaler.capped(Double(cumulValue))
                 
                 LineMark(
                     x: .value("Index", Double(bucket.order)),
-                    y: .value("Cumul", cumulValue)
+                    y: .value("Cumul", capped)
                 )
                 .interpolationMethod(.monotone)
                 .foregroundStyle(Nexus.Colors.positive.opacity(0.8))
@@ -537,7 +555,7 @@ struct HistoryMetricsContent: View {
                 // Points sur la ligne pour lisibilité
                 PointMark(
                     x: .value("Index", Double(bucket.order)),
-                    y: .value("Cumul", cumulValue)
+                    y: .value("Cumul", capped)
                 )
                 .foregroundStyle(Nexus.Colors.positive)
                 .symbolSize(20)
@@ -566,14 +584,15 @@ struct HistoryMetricsContent: View {
     }
     
     /// P0.3-A': Ligne de cumul seule (mode .cumulative) avec axe Y à gauche
-    private func cumulativeLineLayerSolo(domain: ClosedRange<Double>, yDomain: ClosedRange<Double>) -> some View {
+    private func cumulativeLineLayerSolo(domain: ClosedRange<Double>, yDomain: ClosedRange<Double>, scaler: ChartScaler) -> some View {
         Chart {
             ForEach(viewModel.entryBuckets) { bucket in
                 let cumulValue = max(0, bucket.cumulative)
+                let capped = scaler.capped(Double(cumulValue))
                 
                 LineMark(
                     x: .value("Index", Double(bucket.order)),
-                    y: .value("Cumul", cumulValue)
+                    y: .value("Cumul", capped)
                 )
                 .interpolationMethod(.monotone)
                 .foregroundStyle(Nexus.Colors.positive.opacity(0.8))
@@ -581,7 +600,7 @@ struct HistoryMetricsContent: View {
                 
                 PointMark(
                     x: .value("Index", Double(bucket.order)),
-                    y: .value("Cumul", cumulValue)
+                    y: .value("Cumul", capped)
                 )
                 .foregroundStyle(Nexus.Colors.positive)
                 .symbolSize(20)
@@ -736,7 +755,7 @@ struct HistoryMetricsContent: View {
             }
         }
         .chartLegend(position: .top, alignment: .leading)
-        .frame(height: 220)
+        .frame(height: 200)
     }
     
     private var emptyChartPlaceholder: some View {
