@@ -14,10 +14,14 @@ import SwiftUI
 /// Display mode for "Flux d'entrées" chart
 enum ChartDisplayMode: String, CaseIterable, Identifiable {
     case bars = "Barres"
+    case netFlow = "Net flow"
     case cumulative = "Cumul"
     case combined = "Combiné"
     
     var id: String { rawValue }
+    
+    static var todayModes: [ChartDisplayMode] { [.bars, .netFlow, .cumulative, .combined] }
+    static var historyModes: [ChartDisplayMode] { [.bars, .cumulative, .combined] }
 }
 
 @Observable
