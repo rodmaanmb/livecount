@@ -360,11 +360,16 @@ struct HistoryMetricsContent: View {
                     VStack(spacing: Nexus.Spacing.md) {
                         // P0.3-A': Chart display mode toggle
                         Picker("Mode d'affichage", selection: $chartDisplayMode) {
-                            ForEach(ChartDisplayMode.allCases) { mode in
+                            ForEach(ChartDisplayMode.historyModes) { mode in
                                 Text(mode.rawValue).tag(mode)
                             }
                         }
                         .pickerStyle(.segmented)
+                        .onAppear {
+                            if !ChartDisplayMode.historyModes.contains(chartDisplayMode) {
+                                chartDisplayMode = .combined
+                            }
+                        }
                         
                         if viewModel.entryBuckets.isEmpty {
                             emptyChartPlaceholder
@@ -380,7 +385,7 @@ struct HistoryMetricsContent: View {
     // P0.3-A': Dynamic subtitle based on display mode
     private var chartDisplayModeSubtitle: String {
         switch chartDisplayMode {
-        case .bars:
+        case .bars, .netFlow:
             return "Barres journalières (Actuel vs Précédent)"
         case .cumulative:
             return "Cumul progressif"
@@ -415,7 +420,7 @@ struct HistoryMetricsContent: View {
         
         VStack(spacing: Nexus.Spacing.xs) {
             switch chartDisplayMode {
-            case .bars:
+            case .bars, .netFlow:
                 // Barres seules (axe Y gauche uniquement)
                 barChartLayer(domain: domain, yDomain: yDomainBars, scaler: scalerBars)
                     .onChange(of: viewModel.entryBuckets) { _, _ in

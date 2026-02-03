@@ -14,10 +14,14 @@ import SwiftUI
 /// Display mode for "Flux d'entrées" chart
 enum ChartDisplayMode: String, CaseIterable, Identifiable {
     case bars = "Barres"
+    case netFlow = "Net flow"
     case cumulative = "Cumul"
     case combined = "Combiné"
     
     var id: String { rawValue }
+    
+    static var todayModes: [ChartDisplayMode] { [.bars, .netFlow, .cumulative, .combined] }
+    static var historyModes: [ChartDisplayMode] { [.bars, .cumulative, .combined] }
 }
 
 @Observable
@@ -48,6 +52,8 @@ final class DashboardViewModel {
         let date: Date
         let hour: Int
         let entries: Int
+        let exits: Int
+        let net: Int
         let cumulative: Int
     }
 
@@ -397,17 +403,22 @@ final class DashboardViewModel {
         let startOfDay = calendar.startOfDay(for: now)
         let currentHour = calendar.component(.hour, from: now)
 
-        // Bucket entries (entries only, ignore exits)
+        // Bucket entries and exits (keep existing entry-only metrics untouched)
         var hourlyEntries = Array(repeating: 0, count: currentHour + 1)
+        var hourlyExits = Array(repeating: 0, count: currentHour + 1)
         let entryEvents = todayEntries.filter { $0.delta > 0 }
 
-        for entry in entryEvents {
+        for entry in todayEntries {
             let entryDayStart = calendar.startOfDay(for: entry.timestamp)
             guard entryDayStart == startOfDay else { continue }
 
             let hour = calendar.component(.hour, from: entry.timestamp)
             if hour >= 0, hour <= currentHour {
-                hourlyEntries[hour] += max(0, entry.delta)
+                if entry.delta > 0 {
+                    hourlyEntries[hour] += max(0, entry.delta)
+                } else {
+                    hourlyExits[hour] += abs(min(0, entry.delta))
+                }
             }
         }
 
@@ -417,12 +428,15 @@ final class DashboardViewModel {
         for hour in 0...currentHour {
             running += hourlyEntries[hour]
             if let hourDate = calendar.date(byAdding: .hour, value: hour, to: startOfDay) {
+                let exits = hourlyExits[hour]
                 buckets.append(
                     HourlyEntryBucket(
                         id: hour,
                         date: hourDate,
                         hour: hour,
                         entries: hourlyEntries[hour],
+                        exits: exits,
+                        net: hourlyEntries[hour] - exits,
                         cumulative: running
                     )
                 )

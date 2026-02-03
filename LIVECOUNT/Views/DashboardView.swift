@@ -82,6 +82,9 @@ struct DashboardView: View {
                 
                 // P0.2: Reset offset when changing period
                 viewModel.rangeOffsetDays = 0
+                if newPeriod != .today && chartDisplayMode == .netFlow {
+                    chartDisplayMode = .combined
+                }
                 
                 if newPeriod != .today {
                     historyViewModel.selectedRangeType = newPeriod
@@ -345,6 +348,10 @@ struct DashboardView: View {
         }
     }
     
+    private var availableChartModes: [ChartDisplayMode] {
+        viewModel.selectedPeriod == .today ? ChartDisplayMode.todayModes : ChartDisplayMode.historyModes
+    }
+    
     // MARK: - Combined Chart
     
     private var todayCombinedChartSection: some View {
@@ -362,7 +369,7 @@ struct DashboardView: View {
                 
                 // P0.3-A: Chart display mode toggle
                 Picker("Mode d'affichage", selection: $chartDisplayMode) {
-                    ForEach(ChartDisplayMode.allCases) { mode in
+                    ForEach(availableChartModes) { mode in
                         Text(mode.rawValue).tag(mode)
                     }
                 }
@@ -428,6 +435,13 @@ struct DashboardView: View {
                     isLine: false
                 )
             }
+            if chartDisplayMode == .netFlow {
+                legendItem(
+                    color: Nexus.Colors.accent,
+                    label: "Net (in − out)",
+                    isLine: false
+                )
+            }
             if chartDisplayMode == .cumulative || chartDisplayMode == .combined {
                 legendItem(
                     color: Nexus.Colors.positive.opacity(0.8),
@@ -484,6 +498,8 @@ struct DashboardView: View {
         switch chartDisplayMode {
         case .bars:
             barsOnlyChart
+        case .netFlow:
+            netFlowChart
         case .cumulative:
             cumulativeOnlyChart
         case .combined:
@@ -514,6 +530,64 @@ struct DashboardView: View {
         }
         .chartXScale(domain: chartXDomain)
         .chartYScale(domain: normalizedBarsDomain(scaler: scaler))
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .hour, count: hourLabelStride)) { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                    .foregroundStyle(Nexus.Colors.borderSubtle)
+                AxisTick()
+                AxisValueLabel(format: .dateTime.hour(.twoDigits(amPM: .omitted)))
+                    .foregroundStyle(Nexus.Colors.textTertiary)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { _ in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                    .foregroundStyle(Nexus.Colors.borderSubtle)
+                AxisTick()
+                AxisValueLabel()
+                    .foregroundStyle(Nexus.Colors.textSecondary)
+            }
+        }
+        .chartXSelection(value: $selectedHour)
+    }
+    
+    /// Net flow (entrées - sorties) with baseline at 0 — line style
+    private var netFlowChart: some View {
+        let scaler = ChartScaler(values: viewModel.todayChartBuckets.map { Double(abs($0.net)) })
+        let maxVal = scaler.displayMax
+        let upperBound = maxVal > 0 ? maxVal * 1.1 : 1.0
+        
+        return Chart(viewModel.todayChartBuckets) { bucket in
+            let capped = cappedNetValue(bucket.net, scaler: scaler)
+            LineMark(
+                x: .value("Heure", bucket.date, unit: .hour),
+                y: .value("Net", capped)
+            )
+            .interpolationMethod(.monotone)
+            .foregroundStyle(Nexus.Colors.accent)
+            .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            
+            PointMark(
+                x: .value("Heure", bucket.date, unit: .hour),
+                y: .value("Net", capped)
+            )
+            .foregroundStyle(bucket.net >= 0 ? Nexus.Colors.accent : Nexus.Colors.negative.opacity(0.8))
+            .symbolSize(16)
+            
+            RuleMark(y: .value("Baseline", 0))
+                .foregroundStyle(Nexus.Colors.borderSubtle)
+            
+            if let selected = selectedBucket {
+                RuleMark(x: .value("Sélection", selected.date))
+                    .foregroundStyle(Nexus.Colors.border)
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
+                    .annotation(position: .top, alignment: .leading) {
+                        chartTooltip(for: selected, scaler: scaler)
+                    }
+            }
+        }
+        .chartXScale(domain: chartXDomain)
+        .chartYScale(domain: -upperBound...upperBound)
         .chartXAxis {
             AxisMarks(values: .stride(by: .hour, count: hourLabelStride)) { _ in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
@@ -720,6 +794,40 @@ struct DashboardView: View {
                 .foregroundColor(Nexus.Colors.textPrimary)
             }
             
+            if chartDisplayMode == .netFlow {
+                HStack {
+                    Text("Net")
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        if let scaler {
+                            let capped = cappedNetValue(bucket.net, scaler: scaler)
+                            let cappedInt = Int(capped.rounded())
+                            if cappedInt != bucket.net {
+                                Text("\(formatNumber(cappedInt)) (capé)")
+                                    .foregroundColor(Nexus.Colors.textSecondary)
+                                Text("Réel: \(formatNumber(bucket.net))")
+                                    .font(Nexus.Typography.micro)
+                                    .foregroundColor(Nexus.Colors.textTertiary)
+                            } else {
+                                Text(formatNumber(bucket.net))
+                            }
+                        } else {
+                            Text(formatNumber(bucket.net))
+                        }
+                    }
+                }
+                .font(Nexus.Typography.caption)
+                .foregroundColor(Nexus.Colors.textPrimary)
+                
+                HStack {
+                    Text("Entrées / Sorties")
+                    Spacer()
+                    Text("\(formatNumber(bucket.entries)) / \(formatNumber(bucket.exits))")
+                }
+                .font(Nexus.Typography.caption)
+                .foregroundColor(Nexus.Colors.textSecondary)
+            }
+            
             if chartDisplayMode == .cumulative || chartDisplayMode == .combined {
                 HStack {
                     Text("Cumul")
@@ -769,7 +877,7 @@ struct DashboardView: View {
     }
     
     private var isTodayChartEmpty: Bool {
-        viewModel.todayChartBuckets.reduce(0) { $0 + $1.entries } == 0
+        viewModel.todayChartBuckets.allSatisfy { $0.entries == 0 && $0.exits == 0 }
     }
     
     private var maxEntries: Int {
@@ -778,6 +886,11 @@ struct DashboardView: View {
     
     private var maxCumulative: Int {
         viewModel.todayChartBuckets.map(\.cumulative).max() ?? 0
+    }
+    
+    private func cappedNetValue(_ net: Int, scaler: ChartScaler) -> Double {
+        let magnitude = scaler.capped(Double(abs(net)))
+        return net >= 0 ? magnitude : -magnitude
     }
     
     // P0.3-A: Normalized domains with 10% margin
