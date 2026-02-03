@@ -119,6 +119,18 @@ struct TimeRange {
         return TimeRange(type: type, startDate: prevStartDate, endDate: prevEndDate)
     }
     
+    /// For daily view: compare with the same weekday one week earlier
+    func previousWeekSameWeekday() -> TimeRange {
+        var calendar = Calendar.current
+        calendar.timeZone = TimeZone.current
+        
+        let duration = calendar.dateComponents([.day, .hour, .minute, .second], from: startDate, to: endDate)
+        let prevStart = calendar.date(byAdding: .day, value: -7, to: startDate) ?? startDate
+        let prevEnd = calendar.date(byAdding: duration, to: prevStart) ?? prevStart
+        
+        return TimeRange(type: type, startDate: prevStart, endDate: prevEnd)
+    }
+    
     // MARK: - P0.2: Unified Range Labels
     
     /// Returns a formatted range label for display

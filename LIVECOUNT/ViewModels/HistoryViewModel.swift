@@ -107,7 +107,10 @@ final class HistoryViewModel {
             do {
                 // Create time range from selected type with offset
                 let timeRange = TimeRange.from(type: selectedRangeType, offsetDays: rangeOffsetDays)
-                let previousRange = timeRange.previousPeriod()
+                let comparisonRange = timeRange.previousPeriod()
+                let chartPreviousRange = selectedRangeType == .today
+                    ? timeRange.previousWeekSameWeekday()
+                    : comparisonRange
                 
                 // #region agent log
                 #if DEBUG
@@ -154,16 +157,27 @@ final class HistoryViewModel {
                 
                 // Fetch previous period entries for comparison
                 let previousEntries = try await entryStore.fetch(
-                    timeRange: previousRange.interval,
+                    timeRange: comparisonRange.interval,
                     locationId: locationId,
                     deviceId: nil
                 )
+                
+                let previousChartEntries: [Entry]
+                if selectedRangeType == .today {
+                    previousChartEntries = try await entryStore.fetch(
+                        timeRange: chartPreviousRange.interval,
+                        locationId: locationId,
+                        deviceId: nil
+                    )
+                } else {
+                    previousChartEntries = previousEntries
+                }
                 
                 // Compute comparison
                 let comparisonResult = MetricsCalculator.computeComparison(
                     currentSnapshot: snapshot,
                     previousEntries: previousEntries,
-                    previousRange: previousRange,
+                    previousRange: comparisonRange,
                     maxCapacity: maxCapacity
                 )
                 let previousSnapshot = comparisonResult?.previousSnapshot
@@ -175,15 +189,17 @@ final class HistoryViewModel {
                     currentEntries: currentEntries,
                     previousEntries: previousEntries,
                     currentRange: timeRange,
-                    previousRange: previousRange
+                    previousRange: comparisonRange
                 )
                 
                 // Derive visualization and quality indicators
                 deriveVisualizationData(
                     entries: currentEntries,
                     previousEntries: previousEntries,
+                    previousChartEntries: previousChartEntries,
                     timeRange: timeRange,
-                    previousRange: previousRange,
+                    previousRange: comparisonRange,
+                    previousChartRange: chartPreviousRange,
                     maxCapacity: maxCapacity
                 )
                 
@@ -294,8 +310,10 @@ final class HistoryViewModel {
     private func deriveVisualizationData(
         entries: [Entry],
         previousEntries: [Entry],
+        previousChartEntries: [Entry],
         timeRange: TimeRange,
         previousRange: TimeRange,
+        previousChartRange: TimeRange,
         maxCapacity: Int
     ) {
         guard !entries.isEmpty else {
@@ -309,6 +327,7 @@ final class HistoryViewModel {
         let granularity = bucketGranularity(for: timeRange.type)
         let bucketStarts = generateBucketStarts(for: timeRange.interval, granularity: granularity)
         let previousBucketStarts = generateBucketStarts(for: previousRange.interval, granularity: granularity)
+        let previousChartBucketStarts = generateBucketStarts(for: previousChartRange.interval, granularity: granularity)
         
         let currentAgg = aggregateBuckets(
             entries: entries,
@@ -324,6 +343,13 @@ final class HistoryViewModel {
             maxCapacity: maxCapacity
         )
         
+        let previousChartAgg = aggregateBuckets(
+            entries: previousChartEntries,
+            bucketStarts: previousChartBucketStarts,
+            granularity: granularity,
+            maxCapacity: maxCapacity
+        )
+        
         let count = currentAgg.count
         var entryResult: [EntryBucket] = []
         var occupancyResult: [OccupancyBucket] = []
@@ -332,13 +358,14 @@ final class HistoryViewModel {
         for index in 0..<count {
             let current = currentAgg[index]
             let previous = index < previousAgg.count ? previousAgg[index] : nil
+            let previousChart = index < previousChartAgg.count ? previousChartAgg[index] : nil
             
             entryResult.append(
                 EntryBucket(
                     order: index,
                     label: current.label,
                     current: current.inCount,
-                    previous: previous?.inCount,
+                    previous: previousChart?.inCount,
                     cumulative: current.cumulativeIn
                 )
             )

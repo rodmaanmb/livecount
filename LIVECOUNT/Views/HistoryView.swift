@@ -386,12 +386,16 @@ struct HistoryMetricsContent: View {
     private var chartDisplayModeSubtitle: String {
         switch chartDisplayMode {
         case .bars, .netFlow:
-            return "Barres journalières (Actuel vs Précédent)"
+            return "Barres journalières (Actuel vs \(previousSeriesLabel))"
         case .cumulative:
             return "Cumul progressif"
         case .combined:
             return "Barres = journalier • Ligne = cumul"
         }
+    }
+    
+    private var previousSeriesLabel: String {
+        viewModel.selectedRangeType == .today ? "Semaine-1" : "Précédent"
     }
     
     /// P0.3-A': Chart with conditional display based on chartDisplayMode
@@ -417,12 +421,20 @@ struct HistoryMetricsContent: View {
         // Domaines Y indépendants
         let yDomainBars = 0.0...max(1.0, scalerBars.displayMax * 1.1)
         let yDomainCumul = 0.0...max(1.0, scalerCumul.displayMax * 1.1)
+        let seriesCurrent = "Actuel"
+        let seriesPrevious = previousSeriesLabel
         
         VStack(spacing: Nexus.Spacing.xs) {
             switch chartDisplayMode {
             case .bars, .netFlow:
                 // Barres seules (axe Y gauche uniquement)
-                barChartLayer(domain: domain, yDomain: yDomainBars, scaler: scalerBars)
+                barChartLayer(
+                    domain: domain,
+                    yDomain: yDomainBars,
+                    scaler: scalerBars,
+                    seriesCurrent: seriesCurrent,
+                    seriesPrevious: seriesPrevious
+                )
                     .onChange(of: viewModel.entryBuckets) { _, _ in
                         resetEntryScrollPositionIfNeeded()
                     }
@@ -437,7 +449,13 @@ struct HistoryMetricsContent: View {
             case .combined:
                 // Dual-axis: barres (gauche) + cumul (droite) - comportement original
                 ZStack {
-                    barChartLayer(domain: domain, yDomain: yDomainBars, scaler: scalerBars)
+                    barChartLayer(
+                        domain: domain,
+                        yDomain: yDomainBars,
+                        scaler: scalerBars,
+                        seriesCurrent: seriesCurrent,
+                        seriesPrevious: seriesPrevious
+                    )
                     cumulativeLineLayer(domain: domain, yDomain: yDomainCumul, scaler: scalerCumul)
                 }
                 .onChange(of: viewModel.entryBuckets) { _, _ in
@@ -457,9 +475,13 @@ struct HistoryMetricsContent: View {
     
     /// Layer des barres d'entrées avec axe Y à gauche
     @ViewBuilder
-    private func barChartLayer(domain: ClosedRange<Double>, yDomain: ClosedRange<Double>, scaler: ChartScaler) -> some View {
-        let seriesCurrent = "Actuel"
-        let seriesPrevious = "Précédent"
+    private func barChartLayer(
+        domain: ClosedRange<Double>,
+        yDomain: ClosedRange<Double>,
+        scaler: ChartScaler,
+        seriesCurrent: String,
+        seriesPrevious: String
+    ) -> some View {
         
         Chart {
             ForEach(viewModel.entryBuckets) { bucket in
@@ -531,8 +553,8 @@ struct HistoryMetricsContent: View {
             // P0.3-A': Adaptive legend based on display mode
             HStack(spacing: Nexus.Spacing.lg) {
                 if chartDisplayMode == .bars || chartDisplayMode == .combined {
-                    legendItem(color: Nexus.Colors.accent, label: "Actuel", isLine: false)
-                    legendItem(color: Nexus.Colors.warning.opacity(0.6), label: "Précédent", isLine: false)
+                    legendItem(color: Nexus.Colors.accent, label: seriesCurrent, isLine: false)
+                    legendItem(color: Nexus.Colors.warning.opacity(0.6), label: seriesPrevious, isLine: false)
                 }
                 if chartDisplayMode == .cumulative || chartDisplayMode == .combined {
                     legendItem(color: Nexus.Colors.positive.opacity(0.8), label: "Cumul", isLine: true)
@@ -691,7 +713,7 @@ struct HistoryMetricsContent: View {
     @ViewBuilder
     private var occupancyBarsChart: some View {
         let seriesCurrent = "Actuel"
-        let seriesPrevious = "Précédent"
+        let seriesPrevious = previousSeriesLabel
         let domain = (Double(viewModel.occupancyBuckets.first?.order ?? 0) - horizontalDomainPadding)
             ... (Double(viewModel.occupancyBuckets.last?.order ?? 0) + horizontalDomainPadding)
         
