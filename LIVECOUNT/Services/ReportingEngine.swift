@@ -31,6 +31,30 @@ final class ReportingEngine {
         let peakTimestamp = snapshot.peakTimestamp?.formattedForReport(style: .peakTimestamp)
         let netChange = snapshot.netChange.formattedWithSign()
         
+        // Taux de rotation = total entries / capacité (x1.0)
+        let rotationRate: String
+        let rawRotation: Double?
+        if maxCapacity <= 0 {
+            rotationRate = "—"
+            rawRotation = nil
+        } else {
+            let daysFactor: Double
+            if snapshot.timeRange.type == .today {
+                daysFactor = 1.0
+            } else {
+                daysFactor = snapshot.daysCovered > 0 ? Double(snapshot.daysCovered) : 0
+            }
+            
+            if daysFactor <= 0 {
+                rotationRate = "—"
+                rawRotation = nil
+            } else {
+                let rate = Double(snapshot.totalEntriesIn) / (Double(maxCapacity) * daysFactor)
+                rawRotation = rate
+                rotationRate = String(format: "x%.1f", rate)
+            }
+        }
+        
         // Bloc "Couverture/Qualité"
         let coveragePeriod = formatCoveragePeriod(window: snapshot.coverageWindow)
         let status = computeStatus(snapshot: snapshot)
@@ -57,6 +81,7 @@ final class ReportingEngine {
         
         return ReportingSummary(
             totalEntries: totalEntries,
+            rotationRate: rotationRate,
             avgOccupancyPercent: avgOccupancyPercent,
             peakOccupancy: peakOccupancy,
             peakTimestamp: peakTimestamp,
@@ -72,7 +97,8 @@ final class ReportingEngine {
             rawPeakCount: snapshot.peakCount,
             rawNetChange: snapshot.netChange,
             rawDaysCovered: snapshot.daysCovered,
-            rawTotalEntriesIn: snapshot.totalEntriesIn
+            rawTotalEntriesIn: snapshot.totalEntriesIn,
+            rawRotationRate: rawRotation
         )
     }
     

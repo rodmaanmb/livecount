@@ -59,19 +59,19 @@ struct TimeRange {
         case .last7Days:
             // Last 7 days: today + previous 6 days
             // startOfDay(now - 6 days) → now
-            startDate = calendar.date(byAdding: .day, value: -6, to: shiftedTodayStart)!
+            startDate = calendar.date(byAdding: .day, value: -6, to: shiftedTodayStart) ?? shiftedTodayStart
             endDate = shiftedNow
             
         case .last30Days:
             // Last 30 days: today + previous 29 days
             // startOfDay(now - 29 days) → now
-            startDate = calendar.date(byAdding: .day, value: -29, to: shiftedTodayStart)!
+            startDate = calendar.date(byAdding: .day, value: -29, to: shiftedTodayStart) ?? shiftedTodayStart
             endDate = shiftedNow
             
         case .year:
             // Rolling 365 days: today + previous 364 days
             // startOfDay(now - 364 days) → now
-            startDate = calendar.date(byAdding: .day, value: -364, to: shiftedTodayStart)!
+            startDate = calendar.date(byAdding: .day, value: -364, to: shiftedTodayStart) ?? shiftedTodayStart
             endDate = shiftedNow
         }
         
@@ -111,12 +111,14 @@ struct TimeRange {
         }
         
         // Previous period ends where current period starts (exclusive)
-        let prevEndDate = calendar.date(byAdding: .second, value: -1, to: startDate)!
+        let prevEndDate = calendar.date(byAdding: .second, value: -1, to: startDate) ?? startDate
+        let prevStartBase = calendar.startOfDay(for: prevEndDate)
         
         // Previous period starts (days) before that
-        let prevStartDate = calendar.date(byAdding: .day, value: -days, to: calendar.startOfDay(for: prevEndDate))!
+        let prevStartDate = calendar.date(byAdding: .day, value: -days, to: prevStartBase) ?? prevStartBase
+        let safePrevStart = prevStartDate <= prevEndDate ? prevStartDate : prevEndDate
         
-        return TimeRange(type: type, startDate: prevStartDate, endDate: prevEndDate)
+        return TimeRange(type: type, startDate: safePrevStart, endDate: prevEndDate)
     }
     
     /// For daily view: compare with the same weekday one week earlier

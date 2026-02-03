@@ -52,27 +52,13 @@ struct ReportSummaryCard: View {
                     size: .medium
                 )
                 
-                // KPI 4: Variation nette
+                // KPI 4: Taux de rotation
                 MetricCard(
-                    title: "Variation nette",
-                    value: summary.netChange,
-                    valueColor: deltaColor(for: summary.rawNetChange),
+                    title: "Taux de rotation",
+                    value: summary.rotationRate,
                     size: .medium
                 )
             }
-        }
-    }
-    
-    // MARK: - Helpers
-    
-    /// Détermine la couleur du delta selon le signe
-    private func deltaColor(for value: Int) -> Color {
-        if value > 0 {
-            return Nexus.Colors.positive
-        } else if value < 0 {
-            return Nexus.Colors.negative
-        } else {
-            return Nexus.Colors.textSecondary
         }
     }
 }
@@ -85,6 +71,7 @@ struct ReportSummaryCard: View {
     
     let summary = ReportingSummary(
         totalEntries: "1,234",
+        rotationRate: "x2.3",
         avgOccupancyPercent: "72,3%",
         peakOccupancy: "95",
         peakTimestamp: "14 janv · 22h15",
@@ -100,7 +87,8 @@ struct ReportSummaryCard: View {
         rawPeakCount: 95,
         rawNetChange: 342,
         rawDaysCovered: 7,
-        rawTotalEntriesIn: 1234
+        rawTotalEntriesIn: 1234,
+        rawRotationRate: 2.3
     )
     
     ReportSummaryCard(summary: summary)
@@ -110,6 +98,7 @@ struct ReportSummaryCard: View {
 #Preview("ReportSummaryCard - Empty Data") {
     let summary = ReportingSummary(
         totalEntries: "0",
+        rotationRate: "x0.0",
         avgOccupancyPercent: "0,0%",
         peakOccupancy: "0",
         peakTimestamp: nil,
@@ -125,7 +114,8 @@ struct ReportSummaryCard: View {
         rawPeakCount: 0,
         rawNetChange: 0,
         rawDaysCovered: 0,
-        rawTotalEntriesIn: 0
+        rawTotalEntriesIn: 0,
+        rawRotationRate: 0.0
     )
     
     ReportSummaryCard(summary: summary)
@@ -137,6 +127,7 @@ struct ReportSummaryCard: View {
     
     let summary = ReportingSummary(
         totalEntries: "1,234",
+        rotationRate: "x1.2",
         avgOccupancyPercent: "68,5%",
         peakOccupancy: "90",
         peakTimestamp: "13 janv · 18h45",
@@ -152,7 +143,8 @@ struct ReportSummaryCard: View {
         rawPeakCount: 90,
         rawNetChange: -85,
         rawDaysCovered: 7,
-        rawTotalEntriesIn: 1234
+        rawTotalEntriesIn: 1234,
+        rawRotationRate: 1.2
     )
     
     ReportSummaryCard(summary: summary)

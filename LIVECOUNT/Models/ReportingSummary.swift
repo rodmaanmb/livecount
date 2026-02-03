@@ -16,6 +16,9 @@ struct ReportingSummary {
     /// Total d'entrées (in) formaté: "1,234"
     let totalEntries: String
     
+    /// Taux de rotation = total entries / capacité (ex: "x2.1")
+    let rotationRate: String
+    
     /// Occupation moyenne en pourcentage: "72.3%"
     let avgOccupancyPercent: String
     
@@ -69,4 +72,7 @@ struct ReportingSummary {
     
     /// Total d'entrées (raw)
     let rawTotalEntriesIn: Int
+    
+    /// Taux de rotation (raw) ou nil si capacité manquante/0
+    let rawRotationRate: Double?
 }

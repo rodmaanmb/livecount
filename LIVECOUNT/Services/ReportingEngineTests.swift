@@ -137,6 +137,7 @@ enum ReportingEngineTests {
         assert(summary.avgOccupancyPercent == "72,3%", "Expected '72,3%'")
         assert(summary.peakOccupancy == "95", "Expected '95'")
         assert(summary.netChange == "+12", "Expected '+12'")
+        assert(summary.rotationRate == "x1.8", "Expected 'x1.8'")
         assert(summary.status == .ok, "Expected .ok status")
         assert(summary.daysCovered == "7 jours", "Expected '7 jours'")
         assert(summary.avgEntriesPerDay == "176,3", "Expected '176,3'")
@@ -176,6 +177,7 @@ enum ReportingEngineTests {
         assert(summary.totalEntries == "0", "Expected '0'")
         assert(summary.avgOccupancyPercent == "0,0%", "Expected '0,0%'")
         assert(summary.netChange == "0", "Expected '0' (not '+0')")
+        assert(summary.rotationRate == "x0.0", "Expected 'x0.0'")
         assert(summary.peakTimestamp == nil, "Expected nil peak timestamp")
         assert(summary.status == .missing(reason: "Aucune donnée disponible"), "Expected .missing status")
         assert(summary.coveragePeriod == "Aucune donnée", "Expected 'Aucune donnée'")
@@ -216,6 +218,7 @@ enum ReportingEngineTests {
         assert(summary.totalEntries == "1,234,567", "Expected '1,234,567'")
         assert(summary.totalEvents == "2,456,789", "Expected '2,456,789'")
         assert(summary.netChange == "+12,345", "Expected '+12,345'")
+        assert(summary.rotationRate == "x16.9", "Expected 'x16.9'")
         
         print("   ✅ ReportingSummary large numbers correct")
     }
